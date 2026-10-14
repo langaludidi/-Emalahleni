@@ -1,0 +1,42 @@
+name: Emalahleni build and browser checks
+on:
+  push:
+    branches: [main]
+    paths: ['emalahleni-app/**', '.github/workflows/emalahleni-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emalahleni-browser-review
+          path: emalahleni-app/review/
+          if-no-files-found: ignore
+          retention-days: 7

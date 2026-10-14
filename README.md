@@ -1,18 +1,26 @@
 # Emalahleni beneficiary assurance
 
-Development source and build package for the Emalahleni beneficiary verification platform.
+Version 0.2 development source and refreshed build package.
 
 ## Download
 
-Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw file** (the download arrow above the file). Unzip it on your computer.
+Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw file** (the download arrow above the file). The ZIP includes current source and generated frontend/Worker bundles. Alternatively use **Code → Download ZIP** for the repository source. The application is in `emalahleni-app/`.
 
-Alternatively, use **Code → Download ZIP** to download the repository. The application is in `emalahleni-app/`.
+## New features
+
+- Read embedded photograph GPS/capture dates with exifr and apply them as unconfirmed proposals. EXIF values are linked to the verified photograph's file hash.
+- Generate preview or recorded-case verification summaries with react-pdf.
+- Combine verified, clean evidence into draft PDF packs with pdf-lib, checking file hashes and the case fingerprint.
+- Preserve full DoHS review timestamp precision for concurrency checks.
+
+The feature libraries are MIT licensed; their notices are included in `emalahleni-app/THIRD_PARTY_LICENSES.md`.
 
 ## Run
 
-From the `emalahleni-app` folder, using Node.js 24 or newer:
+Use Node.js 24 or newer:
 
 ```sh
+cd emalahleni-app
 npm ci
 npm run typecheck
 npm test
@@ -22,12 +30,12 @@ npm run dev
 
 Open http://localhost:8787.
 
-## Deploy
+## Verification
 
-Read [the deployment guide](./emalahleni-app/README.md). The target is the existing Cloudflare staging Worker. Database, encryption and scanner secrets must be configured separately; credentials are excluded from this repository. Case access and uploads remain disabled by default.
+Seventeen local tests passed, including real EXIF parsing, generated PDF inspection, evidence filtering, hash mismatches and stale-pack rejection. Frontend and Worker dry-run bundles built successfully. The GitHub build/browser workflow performs a separate desktop/mobile Chromium journey and PDF download check; consult its run result before claiming browser acceptance.
 
-The package includes the four-step form, authenticated encrypted draft API, conditional evidence requirements, private upload/scanning controls, assessor reviews and the DoHS section workspace. Twelve local tests passed and the Next.js/Worker bundles built successfully. Deployment, live scanner integration, phone-browser checks and final rules approval remain outstanding. This is a development build, not a production release.
+## Deployment and remaining work
 
-## Latest source correction
+Read [the deployment guide](./emalahleni-app/README.md). The target is the existing Cloudflare staging Worker. Credentials are excluded. Case access and uploads remain disabled by default.
 
-The API preserves full database timestamp precision for DoHS review concurrency checks. Use **Code → Download ZIP** for the latest source; `Emalahleni_Build.zip` is the earlier development snapshot. The document integration run passed its upload, scan/quarantine, review-permission and cross-project checks before finding this timestamp bug; the complete rerun remains pending.
+PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Cloudflare deployment, live user login/scanner integration, the complete database integration rerun, physical phone verification and final rules approval remain outstanding. This is a development build, not a production release.

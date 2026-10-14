@@ -9,12 +9,12 @@ export class Database {
     if (decodeURIComponent(url.username) !== 'emalahleni_worker' || !url.hostname.endsWith('.neon.tech') || url.searchParams.get('sslmode') !== 'require') throw new Error('DATABASE_UNCONFIGURED');
     this.sql = neon(connection);
   }
-  async forActor(actor: string, statements: Statement[]): Promise<Record<string, any>[][]> {
+  async forActor(actor: string, statements: Statement[],readOnly=false): Promise<Record<string, any>[][]> {
     // One HTTP transaction keeps actor context on the same backend; LOCAL resets it at commit.
     const results = await this.sql.transaction([
       this.sql.query("SELECT set_config('app.actor_id', $1, true)", [actor]),
       ...statements.map(s => this.sql.query(s.query, s.params ?? []))
-    ]);
+    ],readOnly?{isolationLevel:'RepeatableRead',readOnly:true}:undefined);
     return results.slice(1) as Record<string, any>[][];
   }
 }

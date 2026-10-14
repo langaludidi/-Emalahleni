@@ -6,6 +6,7 @@ import { formSchema, blankForm, dohsSections, type Evidence, type DepartmentRevi
 import { evaluate } from './rules';
 import { HttpError } from './http';
 import { createIntent, upload, rescan, review, listEvidence, download, type EvidenceEnv } from './evidence';
+import {exportSnapshot} from './export-snapshot';
 
 export interface Env extends EvidenceEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -73,7 +74,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       const [rows] = await db.forActor(actor, [{ query: 'SELECT p.id,p.code,p.name,m.role FROM public.projects p JOIN public.project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 AND m.active ORDER BY p.name', params: [actor] }]);
       return json({ projects: rows });
     }
-    const route = path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications(?:\/([0-9a-f-]+))?(?:\/(readiness|dohs)(?:\/([A-Z_0-9]+))?)?$/i);
+    const route = path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications(?:\/([0-9a-f-]+))?(?:\/(readiness|dohs|export)(?:\/([A-Z_0-9]+))?)?$/i);
     if (!route) throw new HttpError(404, 'NOT_FOUND');
     const project = z.uuid().parse(route[1]); const id = route[2] ? z.uuid().parse(route[2]) : undefined;
     const action = route[3];
@@ -105,7 +106,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if (action === 'readiness' && request.method === 'GET') {
       const [cases, evidence, reviews] = await db.forActor(actor, [
         { query: 'SELECT fields_ciphertext,version FROM public.applications WHERE project_id=$1 AND id=$2', params: [project, id] },
-        { query: 'SELECT id,kind,status,malware_status,document_subtype,document_date,reviewed_by,reviewed_at,certification_acknowledged,dependant_ordinal FROM public.evidence WHERE project_id=$1 AND application_id=$2', params: [project, id] },
+        { query: 'SELECT id,kind,status,malware_status,document_subtype,document_date,reviewed_by,reviewed_at,certification_acknowledged,dependant_ordinal,sha256 FROM public.evidence WHERE project_id=$1 AND application_id=$2', params: [project, id] },
         { query: 'SELECT section,state,reviewed_by,reviewed_at FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2', params: [project, id] }
       ]);
       if (!cases.length) throw new HttpError(404, 'NOT_FOUND');
@@ -125,6 +126,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       const [rows]=await db.forActor(actor,[{query:`SELECT section,state,note,reviewed_by,to_char(reviewed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS reviewed_at FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2 ORDER BY section`,params:[project,id]}]);
       return json({reviews:rows});
     }
+    if(action==='export'&&request.method==='GET'&&!route[4])return json(await exportSnapshot(db,actor,project,id,env.FORM_ENCRYPTION_KEY));
     throw new HttpError(405, 'METHOD_NOT_ALLOWED');
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.code }, e.status);

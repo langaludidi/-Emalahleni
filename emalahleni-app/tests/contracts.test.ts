@@ -9,7 +9,7 @@ import { evaluate, requirementsFor, threeMonthCutoff } from '../src/rules';
 import { handle } from '../src/worker';
 
 const today='2026-10-10';
-function form() { const f=blankForm();f.applicant={...f.applicant,firstNames:'Synthetic',surname:'Example',idNumber:'0000000000000',maritalStatus:'SINGLE'};f.household.incomeSource='UNEMPLOYED';f.site={houseType:'Mud structure',houseTypeConfirmed:true,latitude:-31.7,longitude:27.3,verificationDate:today,photoParametersConfirmed:true,recommendation:'Synthetic observation',photoEvidenceId:'00000000-0000-4000-8000-000000000010'};return f; }
+function form() { const f=blankForm();f.applicant={...f.applicant,firstNames:'Synthetic',surname:'Example',idNumber:'0000000000000',maritalStatus:'SINGLE'};f.household.incomeSource='UNEMPLOYED';f.site={houseType:'Mud structure',houseTypeConfirmed:true,latitude:-31.7,longitude:27.3,verificationDate:today,photoParametersConfirmed:true,recommendation:'Synthetic observation',photoEvidenceId:'00000000-0000-4000-8000-000000000010',photoMetadataSha256:'',photoMetadataSource:''};return f; }
 function evidence(f= form()):Evidence[] {return requirementsFor(f).map((r,i)=>({id:r.kind==='SITE_PHOTO'?f.site.photoEvidenceId:`00000000-0000-4000-8000-${String(i+100).padStart(12,'0')}`,kind:r.kind,status:'VERIFIED',malware_status:'CLEAN',document_subtype:r.kind.includes('AFFIDAVIT')?'AFFIDAVIT':null,document_date:today,reviewed_by:'synthetic-assessor',reviewed_at:today,certification_acknowledged:true,dependant_ordinal:null}));}
 test('conditional declarations require evidence; client cannot set departmental or document approval',()=>{
  const f=form();f.applicant.disability=true;f.applicant.maritalStatus='MARRIED';f.applicant.disaster=true;

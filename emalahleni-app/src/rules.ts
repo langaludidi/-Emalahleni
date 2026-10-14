@@ -59,6 +59,7 @@ export function evaluate(form: CaseForm, evidence: Evidence[], reviews: Departme
   if (form.site.latitude === null || form.site.longitude === null || !form.site.verificationDate || !form.site.photoParametersConfirmed) add('PHOTO_PARAMETERS', 'Confirm photograph GPS coordinates and capture date.');
   if (form.site.verificationDate > today) add('FUTURE_VISIT', 'Verification date cannot be in the future.');
   if (!form.site.recommendation) add('RECOMMENDATION', 'Record the field recommendation supported by the photograph.');
+  if(form.site.photoMetadataSource==='EXIF'&&!evidence.some(e=>e.id===form.site.photoEvidenceId&&e.kind==='SITE_PHOTO'&&e.sha256===form.site.photoMetadataSha256&&verified(e,today)))add('PHOTO_METADATA_BINDING','Link the same verified photograph used for metadata extraction.');
   const requirements = requirementsFor(form);
   for (const requirement of requirements.filter(r => !r.kind.startsWith('DEPENDANT_'))) {
     const documents = evidence.filter(e => matches(e, requirement.kind));

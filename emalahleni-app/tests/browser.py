@@ -1,5 +1,5 @@
 """Browser checks against the local Worker; connected UI uses explicit API/auth fixtures."""
-import json, os, subprocess, time
+import json, os, subprocess, time, shutil
 from pathlib import Path
 from urllib.request import urlopen
 from playwright.sync_api import sync_playwright
@@ -21,7 +21,8 @@ try:
             time.sleep(0.5)
     else: raise RuntimeError('Worker did not become ready')
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path='/usr/bin/chromium', headless=True, args=['--no-sandbox'])
+        executable = os.environ.get('CHROMIUM_PATH') or shutil.which('chromium')
+        browser = p.chromium.launch(**({'executable_path':executable} if executable else {}), headless=True, args=['--no-sandbox'])
         for width, height, label in [(1440, 1000, 'desktop'), (390, 844, 'mobile')]:
             page = browser.new_page(viewport={'width': width, 'height': height})
             errors = []
@@ -53,6 +54,12 @@ try:
             page.get_by_role('button', name='Check readiness').click()
             page.get_by_role('heading', name='Next actions').wait_for()
             assert page.get_by_text('Blockers to resolve', exact=True).is_visible()
+            with page.expect_download() as exported:
+                page.get_by_role('button', name='Export verification summary', exact=True).click()
+            download = exported.value
+            assert download.suggested_filename.endswith('.pdf')
+            download.save_as(str(review / (label + '-summary.pdf')))
+            assert (review / (label + '-summary.pdf')).read_bytes().startswith(b'%PDF')
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             assert not errors, errors
             page.screenshot(path=str(review / (label + '.png')), full_page=True)
