@@ -17,7 +17,7 @@ const steps = ['Applicant', 'Household & income', 'Site verification', 'Document
 const labels: Record<string,string> = { UNEMPLOYED: 'No income / unemployed', SOCIAL_GRANT: 'Social grant', EMPLOYED: 'Employed', SELF_EMPLOYED: 'Self-employed', PENSION: 'Pension', OTHER: 'Other income' };
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
 function needsEmailVerification(error: unknown) {
-  return !!error && typeof error === 'object' && 'code' in error && String(error.code).toUpperCase() === 'EMAIL_NOT_VERIFIED';
+  return !!error && typeof error === 'object' && 'code' in error && ['EMAIL_NOT_VERIFIED','EMAIL_NOT_CONFIRMED'].includes(String(error.code).toUpperCase());
 }
 
 export default function Page() {
