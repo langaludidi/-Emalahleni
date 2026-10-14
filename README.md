@@ -27,3 +27,7 @@ Open http://localhost:8787.
 Read [the deployment guide](./emalahleni-app/README.md). The target is the existing Cloudflare staging Worker. Database, encryption and scanner secrets must be configured separately; credentials are excluded from this repository. Case access and uploads remain disabled by default.
 
 The package includes the four-step form, authenticated encrypted draft API, conditional evidence requirements, private upload/scanning controls, assessor reviews and the DoHS section workspace. Twelve local tests passed and the Next.js/Worker bundles built successfully. Deployment, live scanner integration, phone-browser checks and final rules approval remain outstanding. This is a development build, not a production release.
+
+## Latest source correction
+
+The API preserves full database timestamp precision for DoHS review concurrency checks. Use **Code → Download ZIP** for the latest source; `Emalahleni_Build.zip` is the earlier development snapshot. The document integration run passed its upload, scan/quarantine, review-permission and cross-project checks before finding this timestamp bug; the complete rerun remains pending.
