@@ -32,10 +32,10 @@ Open http://localhost:8787.
 
 ## Verification
 
-Seventeen local tests passed, including real EXIF parsing, generated PDF inspection, evidence filtering, hash mismatches and stale-pack rejection. Frontend and Worker dry-run bundles built successfully. The GitHub build/browser workflow performs a separate desktop/mobile Chromium journey and PDF download check; consult its run result before claiming browser acceptance.
+Seventeen local tests passed, including real EXIF parsing, generated PDF inspection, evidence filtering, hash mismatches and stale-pack rejection. Frontend and Worker dry-run bundles built successfully. The [GitHub build/browser run](https://github.com/langaludidi/-Emalahleni/actions/runs/38540486238) passed desktop/mobile Chromium journeys and generated PDF downloads. The isolated Neon document integration run also passed, using real database isolation and explicit storage/scanner doubles.
 
 ## Deployment and remaining work
 
 Read [the deployment guide](./emalahleni-app/README.md). The target is the existing Cloudflare staging Worker. Credentials are excluded. Case access and uploads remain disabled by default.
 
-PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Cloudflare deployment, live user login/scanner integration, the complete database integration rerun, physical phone verification and final rules approval remain outstanding. This is a development build, not a production release.
+PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Cloudflare deployment, live user login/scanner integration, live storage verification, physical phone verification and final rules approval remain outstanding. This is a development build, not a production release.

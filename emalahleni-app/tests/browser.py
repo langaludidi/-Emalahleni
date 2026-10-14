@@ -1,4 +1,4 @@
-"""Browser checks against the local Worker; connected UI uses explicit API/auth fixtures."""
+"""Desktop/mobile preview journeys against the local Worker; Auth is stubbed and no beneficiary data is used."""
 import json, os, subprocess, time, shutil
 from pathlib import Path
 from urllib.request import urlopen
