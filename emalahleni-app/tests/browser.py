@@ -63,8 +63,25 @@ try:
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             assert not errors, errors
             page.screenshot(path=str(review / (label + '.png')), full_page=True)
+            page.route('**/sign-in/email', lambda route: route.fulfill(status=403, content_type='application/json', body=json.dumps({'code':'EMAIL_NOT_VERIFIED','message':'Email not verified'})))
+            page.route('**/email-otp/send-verification-otp', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True})))
+            page.route('**/email-otp/verify-email', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'status':True})))
+            page.get_by_role('button', name='Connected workspace', exact=True).click()
+            page.get_by_label('Email', exact=True).fill('synthetic@emalahleni.invalid')
+            page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
+            page.get_by_role('button', name='Sign in', exact=True).click()
+            page.get_by_role('heading', name='Verify your email', exact=True).wait_for()
+            assert page.get_by_label('Password', exact=True).input_value() == ''
+            page.get_by_role('button', name='Send verification code', exact=True).click()
+            page.get_by_label('Email verification code', exact=True).wait_for()
+            page.get_by_label('Email verification code', exact=True).fill('123456')
+            page.get_by_role('button', name='Verify email', exact=True).click()
+            page.get_by_text('Email verified. Enter your password and sign in.', exact=True).first.wait_for()
+            assert not page.get_by_role('heading', name='Verify your email', exact=True).is_visible()
+            assert not errors, errors
+            page.screenshot(path=str(review / (label + '-email-verification.png')), full_page=True)
             page.close()
-            print(label + ': four-step workflow, conditional evidence, Worker readiness response, no overflow and no script errors passed.', flush=True)
+            print(label + ': four-step workflow, conditional evidence, Worker readiness response, no overflow no script errors and mocked email-verification recovery passed.', flush=True)
         browser.close()
 finally:
     server.terminate()

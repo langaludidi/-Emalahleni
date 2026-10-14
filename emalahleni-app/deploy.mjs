@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 const config=JSON.parse(readFileSync(new URL('./wrangler.jsonc',import.meta.url),'utf8'));
-if(config.name!=='emalahleni-api-staging'||config.vars.ENABLE_CASE_API!=='false'||config.vars.ENABLE_DOCUMENT_UPLOADS!=='false')throw Error('Expected disabled staging deployment configuration.');
+if(config.name!=='emalahleni-api-staging'||!['false','true'].includes(config.vars.ENABLE_CASE_API)||config.vars.ENABLE_DOCUMENT_UPLOADS!=='false')throw Error('Expected synthetic staging deployment with document uploads disabled.');
 const secrets=JSON.parse(readFileSync(new URL('./.deployment-secrets.json',import.meta.url),'utf8'));
 if(new URL(secrets.DATABASE_URL).username!=='emalahleni_worker'||Buffer.from(secrets.FORM_ENCRYPTION_KEY,'base64').length!==32)throw Error('Invalid restricted database or encryption configuration.');
 const run=(args,input)=>{const result=spawnSync(process.execPath,['node_modules/wrangler/bin/wrangler.js',...args],{cwd:new URL('.',import.meta.url),stdio:input?['pipe','inherit','inherit']:'inherit',input,env:process.env});if(result.status!==0)process.exit(result.status??1);};
 run(['whoami']);
 run(['deploy']);
 run(['secret','bulk'],JSON.stringify(secrets));
-console.log('Staging deployment and secret configuration completed. Case access and uploads remain disabled. Verify /healthz and /storage-probe before enabling integrations.');
+console.log(`Staging deployment and secret configuration completed. Case API: ${config.vars.ENABLE_CASE_API==='true'?'enabled':'disabled'}. Document uploads remain disabled. Verify /healthz, /storage-probe and authenticated synthetic case access.`);

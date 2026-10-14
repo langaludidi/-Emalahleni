@@ -2,7 +2,7 @@
 
 This build implements the four-step verification form, conditional evidence requirements, encrypted draft storage, project-scoped authenticated API access, version checks, private evidence upload and scanning controls, assessor review, and the DoHS section workspace.
 
-It is a synthetic-data development build, not a production release. Case access and document uploads are disabled by default. Readiness rules are provisional and never approve submission readiness.
+It is a synthetic-data development build, not a production release. Authenticated synthetic case access is enabled when the required runtime secrets are present. Document uploads remain disabled. Readiness rules are provisional and never approve submission readiness.
 
 ## Run locally
 
@@ -22,11 +22,19 @@ Open http://localhost:8787. The preview form works without credentials. Preview 
 
 The existing `emalahleni-api-staging` Worker is deployed at https://emalahleni-api-staging.ludidil.workers.dev. Cloudflare Workers Builds connects this repository's `main` branch with root directory `emalahleni-app`, build command `npm run build` and deploy command `npm run deploy`. `.node-version` selects Node.js 24. `wrangler.jsonc` retains the Worker and private `emalahleni-evidence-staging` R2 bucket names.
 
-On 14 October 2026, the first connected Cloudflare build succeeded, the operator confirmed the preview rendered in their browser and reported adding `DATABASE_URL`, `FORM_ENCRYPTION_KEY` and `SCANNER_TOKEN` as runtime secrets. The deployed fixed-key `/storage-probe` returned `service: R2`, `status: reachable`, `syntheticProbeObjectPresent: false` and `writeEnabled: false`. This verifies R2 HEAD access; it does not verify uploads, scanning, login or database credentials. Case access and document uploads remain disabled.
+On 14 October 2026, the first connected Cloudflare build succeeded, the operator confirmed the preview rendered in their browser and reported adding `DATABASE_URL`, `FORM_ENCRYPTION_KEY` and `SCANNER_TOKEN` as runtime secrets. The deployed fixed-key `/storage-probe` returned `service: R2`, `status: reachable`, `syntheticProbeObjectPresent: false` and `writeEnabled: false`. This verifies R2 HEAD access; it does not verify uploads, scanning, login or database credentials. Case access and document uploads were disabled for that first deployment.
 
 Configure `DATABASE_URL` as a Worker secret using the restricted `emalahleni_worker` account. Its prepared secret is outside this source package. Configure `FORM_ENCRYPTION_KEY` as a separate secret containing a base64-encoded 32-byte AES key. Preserve that key across deployments; losing it makes saved forms unreadable. Never include either secret in browser code or commit them.
 
-`ENABLE_CASE_API=true` enables the authenticated case API after configuration. Assign identities to project memberships administratively; signing in does not grant access. The Neon Auth issuer and JWKS are configured for the existing staging branch, and the Worker origin has been added to that branch's trusted domains. Actual user login remains unverified.
+`ENABLE_CASE_API=true` enables the authenticated case API after configuration. Assign identities to project memberships administratively; signing in does not grant access. The Neon Auth issuer and JWKS are configured for the existing staging branch, and the Worker origin has been added to that branch's trusted domains. The staging sign-in screen now handles unverified-email errors, lets the user explicitly request an email verification code, and verifies that code through Neon Auth. Browser sign-in and session restoration still require live verification.
+
+## Gate-two preparation
+
+The staging database contains a labelled synthetic project and an encrypted draft for the capture check. The operator has `OFFICER` access to that project. Separate reserved-domain test identities cover `AUDITOR`, `DOHS_REVIEWER`, another project and no membership; their email verification remains pending. Signing in does not create memberships or grant access.
+
+The prepared Worker database credential authenticated as `emalahleni_worker`, with no superuser, role-creation or RLS-bypass privileges. Staging probes through the same restricted role passed project isolation, no project visibility for an unassigned identity, encrypted create/save, stale-version rejection, read-only auditor behavior using the API's writer predicate, and other-project/unassigned read/write denial. Probe audit metadata is labelled `GATE2_DATABASE_PROBE`. These are database probes, not HTTP requests authenticated by live JWTs; the browser sign-in, token verification, saved-case reload and sign-out journey remains pending.
+
+`wrangler.jsonc` enables the authenticated case API for the synthetic staging test while retaining `ENABLE_DOCUMENT_UPLOADS=false`. Local type checks and all 17 tests pass. The browser harness covers unverified-email recovery with mocked email-code endpoints; it does not prove real email delivery.
 
 ## Documents and scanner
 

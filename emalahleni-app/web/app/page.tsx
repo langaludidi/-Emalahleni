@@ -16,11 +16,16 @@ type Case = { id: string; reference: string; version: number; workflow_status: s
 const steps = ['Applicant', 'Household & income', 'Site verification', 'Documents & readiness'];
 const labels: Record<string,string> = { UNEMPLOYED: 'No income / unemployed', SOCIAL_GRANT: 'Social grant', EMPLOYED: 'Employed', SELF_EMPLOYED: 'Self-employed', PENSION: 'Pension', OTHER: 'Other income' };
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="field"><span>{label}</span>{children}</label>; }
+function needsEmailVerification(error: unknown) {
+  return !!error && typeof error === 'object' && 'code' in error && String(error.code).toUpperCase() === 'EMAIL_NOT_VERIFIED';
+}
 
 export default function Page() {
   const [step,setStep] = useState(0); const [form,setForm] = useState<CaseForm>(blankForm());
   const [mode,setMode] = useState<'preview'|'connected'>('preview'); const [user,setUser] = useState('');
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('');
+  const [verificationNeeded,setVerificationNeeded] = useState(false);
+  const [verificationSent,setVerificationSent] = useState(false); const [verificationCode,setVerificationCode] = useState('');
   const [projects,setProjects] = useState<Project[]>([]); const [project,setProject] = useState('');
   const [cases,setCases] = useState<Case[]>([]); const [active,setActive] = useState<Case|null>(null);
   const [reference,setReference] = useState('SYN-'); const [status,setStatus] = useState('Preview mode · changes stay in this tab.');
@@ -50,7 +55,25 @@ export default function Page() {
   }
   async function loadProjects() { const result=await api('/api/projects');setProjects(result.projects);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
   useEffect(()=> { let live=true; auth.getSession().then(async result=>{if(live && result.data?.user){setUser(result.data.user.name || result.data.user.email);}}).catch(()=>{});return()=>{live=false}; },[auth]);
-  async function signIn() { const result=await auth.signIn.email({email,password});setPassword('');if(result.error)throw new Error(result.error.message || 'Sign-in failed.');setUser(result.data?.user.name || email);await loadProjects(); }
+  function showVerification() { setVerificationNeeded(true);setVerificationSent(false);setVerificationCode('');setStatus('Verify your email before signing in. Request a code below.'); }
+  async function signIn() {
+    try {
+      const result=await auth.signIn.email({email,password});
+      if(result.error) { if(needsEmailVerification(result.error)){showVerification();return;}throw new Error(result.error.message || 'Sign-in failed.'); }
+      setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setUser(result.data?.user.name || email);await loadProjects();
+    } catch(error) { if(needsEmailVerification(error)){showVerification();return;}throw error; }
+    finally { setPassword(''); }
+  }
+  async function sendVerification() {
+    const result=await auth.emailOtp.sendVerificationOtp({email,type:'email-verification'});
+    if(result.error)throw new Error(result.error.message || 'Unable to send a verification code.');
+    setVerificationSent(true);setVerificationCode('');setStatus('Verification code sent. Check your inbox and spam folder.');
+  }
+  async function verifyEmail() {
+    const result=await auth.emailOtp.verifyEmail({email,otp:verificationCode});
+    if(result.error)throw new Error(result.error.message || 'The verification code is invalid or expired.');
+    setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setStatus('Email verified. Enter your password and sign in.');
+  }
   async function selectProject(id:string) { setCases([]);setProject(id);setActive(null);setForm(blankForm());setReadiness(null);if(!id)return;const result=await api(`/api/projects/${id}/applications`);setCases(result.applications); }
   async function loadCase(id:string) { const result=await api(`/api/projects/${project}/applications/${id}`);setActive(result);setForm(result.form);setReference(result.reference);setReadiness(null);setStatus(`Loaded ${result.reference} · version ${result.version}`); }
   async function save() { if(!project)throw new Error('Choose a project first.');const root=`/api/projects/${project}/applications`;const result=active?await api(`${root}/${active.id}`,'PUT',{version:active.version,form}):await api(root,'POST',{reference,form});setActive({...result,workflow_status:'DRAFT'});setStatus(`Draft saved · version ${result.version}`);const list=await api(root);setCases(list.applications); }
@@ -64,7 +87,9 @@ export default function Page() {
     <header><div className="brand"><span className="brand-mark">E</span><div><strong>EMALAHLENI</strong><small>Beneficiary assurance</small></div></div><span className="pill">Development workspace</span></header>
     <section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>
     <section className="connection" aria-label="Workspace connection"><div className="mode"><button className={mode==='preview'?'selected':''} onClick={()=>{setMode('preview');setActive(null);setProject('');setForm(blankForm());setReadiness(null);setStatus('Preview mode · changes stay in this tab.');}}>Preview form</button><button className={mode==='connected'?'selected':''} onClick={()=>{if(mode!=='connected'){setMode('connected');setActive(null);setProject('');setCases([]);setForm(blankForm());setReadiness(null);}if(user)run(loadProjects);}}>Connected workspace</button></div>
-      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:<div className="login">{!user?<><Field label="Email"><input type="email" autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)}/></Field><Field label="Password"><input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>:<><span>Signed in as {user}</span><button className="secondary" onClick={()=>run(loadProjects)} disabled={busy}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(async()=>{await auth.signOut();setUser('');setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');})}>Sign out</button></>}</div>}
+      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:<div className="login">{!user?<><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>{setEmail(e.target.value);setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');}}/></Field><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>:<><span>Signed in as {user}</span><button className="secondary" onClick={()=>run(loadProjects)} disabled={busy}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(async()=>{await auth.signOut();setUser('');setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');})}>Sign out</button></>}</div>}
+      {mode==='connected'&&!user&&<p className="hint" role="status">{busy?'Working…':status}</p>}
+      {mode==='connected'&&!user&&verificationNeeded&&<fieldset aria-label="Email verification" disabled={busy}><h3>Verify your email</h3><p>Request a code for {email}, then enter it here.</p><button className="secondary" disabled={!email} onClick={()=>run(sendVerification)}>{verificationSent?'Send a new verification code':'Send verification code'}</button>{verificationSent&&<><Field label="Email verification code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={verificationCode} onChange={e=>setVerificationCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field><button disabled={verificationCode.length!==6} onClick={()=>run(verifyEmail)}>Verify email</button></>}</fieldset>}
       {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select value={project} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select value={active?.id??''} disabled={!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):(setActive(null),setForm(blankForm()),setReference('SYN-'),setReadiness(null))}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field><Field label="Synthetic case reference"><input value={reference} disabled={!!active} onChange={e=>setReference(e.target.value.toUpperCase())}/></Field></div>}
     </section>
     <nav className="steps" aria-label="Verification steps">{steps.map((name,i)=><button key={name} className={step===i?'active':''} aria-current={step===i?'step':undefined} onClick={()=>setStep(i)}><span>{i+1}</span>{name}</button>)}</nav>

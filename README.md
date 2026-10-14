@@ -1,10 +1,10 @@
 # Emalahleni beneficiary assurance
 
-Version 0.2 development source and refreshed build package.
+Development source for the Cloudflare staging app.
 
 ## Download
 
-Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw file** (the download arrow above the file). The ZIP includes current source and generated frontend/Worker bundles. Alternatively use **Code → Download ZIP** for the repository source. The application is in `emalahleni-app/`.
+Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw file** (the download arrow above the file). The ZIP is the earlier version 0.2 snapshot. Use **Code → Download ZIP** for the latest source, including the email-verification flow. The application is in `emalahleni-app/`.
 
 ## New features
 
@@ -12,6 +12,7 @@ Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw f
 - Generate preview or recorded-case verification summaries with react-pdf.
 - Combine verified, clean evidence into draft PDF packs with pdf-lib, checking file hashes and the case fingerprint.
 - Preserve full DoHS review timestamp precision for concurrency checks.
+- Request and verify an email code when Neon blocks sign-in for an unverified email.
 
 The feature libraries are MIT licensed; their notices are included in `emalahleni-app/THIRD_PARTY_LICENSES.md`.
 
@@ -36,6 +37,6 @@ Seventeen local tests passed, including real EXIF parsing, generated PDF inspect
 
 ## Deployment and remaining work
 
-The [staging preview](https://emalahleni-api-staging.ludidil.workers.dev) is deployed through Cloudflare Workers Builds from `main`. On 14 October 2026, the build succeeded, the operator confirmed the browser preview and entry of the three runtime secrets, and the deployed R2 fixed-key probe returned `reachable` with writes disabled. Read [the deployment guide](./emalahleni-app/README.md) for configuration and evidence limits. Credentials are excluded. Case access and uploads remain disabled.
+The [staging preview](https://emalahleni-api-staging.ludidil.workers.dev) is deployed through Cloudflare Workers Builds from `main`. On 14 October 2026, the build succeeded, the operator confirmed the browser preview and entry of the three runtime secrets, and the deployed R2 fixed-key probe returned `reachable` with writes disabled. Read [the deployment guide](./emalahleni-app/README.md) for configuration and evidence limits. Credentials are excluded. Authenticated synthetic case access is enabled when the runtime secrets are configured; document uploads remain disabled.
 
-PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Live user login and database credential verification, scanner integration and the complete storage upload/review/download flow, physical phone verification, final rules approval and operational safeguards remain outstanding. This is a development build, not a production release.
+PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. The prepared restricted database credential and scoped staging database probes passed. Browser email verification, sign-in, saved-case reload and sign-out remain pending. Scanner integration and the complete storage upload/review/download flow, physical phone verification, final rules approval and operational safeguards remain outstanding. This is a development build, not a production release.
