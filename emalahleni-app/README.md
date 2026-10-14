@@ -20,7 +20,9 @@ Open http://localhost:8787. The preview form works without credentials. Preview 
 
 ## Deployment
 
-The target is the existing `emalahleni-api-staging` Worker and private `emalahleni-evidence-staging` R2 bucket. `wrangler.jsonc` retains these names. An authenticated Cloudflare connection is required to deploy; none is available in this session.
+The existing `emalahleni-api-staging` Worker is deployed at https://emalahleni-api-staging.ludidil.workers.dev. Cloudflare Workers Builds connects this repository's `main` branch with root directory `emalahleni-app`, build command `npm run build` and deploy command `npm run deploy`. `.node-version` selects Node.js 24. `wrangler.jsonc` retains the Worker and private `emalahleni-evidence-staging` R2 bucket names.
+
+On 14 October 2026, the first connected Cloudflare build succeeded, the operator confirmed the preview rendered in their browser and reported adding `DATABASE_URL`, `FORM_ENCRYPTION_KEY` and `SCANNER_TOKEN` as runtime secrets. The deployed fixed-key `/storage-probe` returned `service: R2`, `status: reachable`, `syntheticProbeObjectPresent: false` and `writeEnabled: false`. This verifies R2 HEAD access; it does not verify uploads, scanning, login or database credentials. Case access and document uploads remain disabled.
 
 Configure `DATABASE_URL` as a Worker secret using the restricted `emalahleni_worker` account. Its prepared secret is outside this source package. Configure `FORM_ENCRYPTION_KEY` as a separate secret containing a base64-encoded 32-byte AES key. Preserve that key across deployments; losing it makes saved forms unreadable. Never include either secret in browser code or commit them.
 

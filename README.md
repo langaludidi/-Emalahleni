@@ -36,6 +36,6 @@ Seventeen local tests passed, including real EXIF parsing, generated PDF inspect
 
 ## Deployment and remaining work
 
-Read [the deployment guide](./emalahleni-app/README.md). The target is the existing Cloudflare staging Worker. Credentials are excluded. Case access and uploads remain disabled by default.
+The [staging preview](https://emalahleni-api-staging.ludidil.workers.dev) is deployed through Cloudflare Workers Builds from `main`. On 14 October 2026, the build succeeded, the operator confirmed the browser preview and entry of the three runtime secrets, and the deployed R2 fixed-key probe returned `reachable` with writes disabled. Read [the deployment guide](./emalahleni-app/README.md) for configuration and evidence limits. Credentials are excluded. Case access and uploads remain disabled.
 
-PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Cloudflare deployment, live user login/scanner integration, live storage verification, physical phone verification and final rules approval remain outstanding. This is a development build, not a production release.
+PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. Live user login and database credential verification, scanner integration and the complete storage upload/review/download flow, physical phone verification, final rules approval and operational safeguards remain outstanding. This is a development build, not a production release.
