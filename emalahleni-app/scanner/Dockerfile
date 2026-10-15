@@ -25,4 +25,5 @@ RUN --mount=type=secret,id=proxy_ca,uid=10001,gid=10001,mode=0400 \
 COPY --chown=scanner:scanner server.mjs start.mjs clamd.conf ./
 ENV PORT=8080 NODE_ENV=production
 EXPOSE 8080
-CMD ["node","start.mjs"]
+ENTRYPOINT ["/usr/local/bin/node","/app/start.mjs"]
+CMD []

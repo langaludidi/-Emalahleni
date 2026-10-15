@@ -88,6 +88,7 @@ test('startup diagnostics classify known SDK failures without returning provider
   ['Container exited before we could determine health, exit code: 1','EXIT'],
   ['Container is not listening on port 8080','PORT'],
   ['Container did not start after 30000ms','INSTANCE'],
+  ['The container is not running, consider calling start()','INSTANCE'],
   ['PRIVATE PROVIDER MESSAGE AND TOKEN','UNKNOWN'],
  ] as const)assert.equal(startupReason(new Error(message)),reason);
  assert.equal(startupReason({message:'the container is not listening'}),'PORT');

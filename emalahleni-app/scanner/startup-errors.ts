@@ -26,7 +26,7 @@ export function startupReason(error: unknown): StartupReason {
   if (/(?:startAndWaitForPorts|getByName|fetch).*(?:not (?:a function|implemented|found)|does not exist)|RPC.*(?:not found|unsupported|not implemented|cannot serialize)/i.test(message)) return 'RPC';
   if (/exit code|container (?:crashed|exited)|process.*exit/i.test(message)) return 'EXIT';
   if (/failed to verify port|not.*listening|connection refused|port.*(?:not.*(?:ready|available)|timeout)/i.test(message)) return 'PORT';
-  if (/no container instance|no.*instance.*running|container did not start|instance.*(?:timeout|timed out|not available)/i.test(message)) return 'INSTANCE';
+  if (/no container instance|no.*instance.*running|container is not running|container did not start|instance.*(?:timeout|timed out|not available)/i.test(message)) return 'INSTANCE';
   return 'UNKNOWN';
 }
 
