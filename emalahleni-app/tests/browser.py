@@ -156,8 +156,8 @@ try:
             page.route('**/api/projects', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]})))
             page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
             page.get_by_role('button', name='Sign in', exact=True).click()
-            page.get_by_label('Project', exact=True).wait_for()
-            page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            page.get_by_label('Project').wait_for()
+            page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
             assert not page.get_by_label('Email', exact=True).is_visible()
             assert not page.get_by_label('Password', exact=True).is_visible()
             assert not page.get_by_role('button', name='Forgot password', exact=True).is_visible()
@@ -166,9 +166,9 @@ try:
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             page.screenshot(path=str(review / (label + '-signed-in.png')), full_page=True)
             page.reload(wait_until='domcontentloaded')
-            page.get_by_label('Project', exact=True).wait_for()
-            page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').wait_for(state='attached')
-            assert page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').count() == 1
+            page.get_by_label('Project').wait_for()
+            page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            assert page.get_by_label('Project').locator('option', has_text='Synthetic staging').count() == 1
             assert not page.get_by_label('Email', exact=True).is_visible()
             page.locator('summary', has_text='Account').click()
             assert page.get_by_text('Signed in as Synthetic Officer', exact=True).is_visible()
@@ -177,7 +177,7 @@ try:
             page.get_by_role('button', name='Sign out', exact=True).click()
             page.get_by_label('Email', exact=True).wait_for()
             assert page.get_by_role('button', name='Forgot password', exact=True).is_visible()
-            assert not page.get_by_label('Project', exact=True).is_visible()
+            assert not page.get_by_label('Project').is_visible()
             assert page.get_by_label('Password', exact=True).input_value() == ''
             assert not errors, errors
             page.close()
