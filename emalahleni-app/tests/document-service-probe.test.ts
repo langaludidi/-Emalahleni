@@ -4,7 +4,7 @@ import {PDFDocument} from 'pdf-lib';
 import {probeDocumentService,DocumentServiceCheckError} from '../src/document-service-probe';
 import {digest,type EvidenceEnv} from '../src/evidence';
 import {HttpError} from '../src/http';
-import {startupReason} from '../scanner/startup-errors';
+import {startupReason,startupDiagnostic} from '../scanner/startup-errors';
 
 const text='NAMES: SYNTHETIC TEST\nSURNAME: EXAMPLE\nIDENTITY NUMBER: 9001010000080\nDATE OF BIRTH: 1990-01-01';
 const notReady=(error:unknown)=>error instanceof HttpError&&error.status===503&&error.code==='DOCUMENT_SERVICE_NOT_READY';
@@ -90,4 +90,21 @@ test('startup diagnostics classify known SDK failures without returning provider
   ['Container did not start after 30000ms','INSTANCE'],
   ['PRIVATE PROVIDER MESSAGE AND TOKEN','UNKNOWN'],
  ] as const)assert.equal(startupReason(new Error(message)),reason);
+ assert.equal(startupReason({message:'the container is not listening'}),'PORT');
+ assert.equal(startupReason(new Error('Startup aborted',{cause:new Error('the container is not listening')})),'PORT');
+});
+
+test('private startup diagnostics retain the exception message while redacting runtime secrets',()=>{
+ const token='synthetic-private-token/for+diagnostic-tests==';
+ const connection='postgresql://user:private-password@db.invalid/neondb?sslmode=require';
+ const message=`Cannot perform I/O on behalf of a different request. token=${token} encoded=${encodeURIComponent(token)} url=${connection} Authorization: Bearer another-private-value`;
+ const result=startupDiagnostic({message},{SCANNER_TOKEN:token,DATABASE_URL:connection});
+ assert.match(result.errorMessage,/Cannot perform I\/O on behalf of a different request/);
+ for(const value of [token,encodeURIComponent(token),connection,'private-password','another-private-value'])assert.equal(result.errorMessage.includes(value),false);
+ assert.match(result.errorMessage,/\[redacted/);
+ assert.equal(startupDiagnostic(new Error('x'.repeat(20000)),{}).errorMessage.length<=1024,true);
+ assert.equal(startupDiagnostic({get message(){throw new Error('private');}},{}).errorMessage,'No message supplied by runtime');
+ const caused=startupDiagnostic(new Error('Startup aborted',{cause:new Error(message)}),{SCANNER_TOKEN:token,DATABASE_URL:connection});
+ assert.match(caused.errorMessage,/caused by: Cannot perform I\/O/);
+ assert.equal(caused.errorMessage.includes(token),false);
 });

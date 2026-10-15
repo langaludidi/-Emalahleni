@@ -1,5 +1,5 @@
 import { Container } from '@cloudflare/containers';
-import { startupReason, type StartupReason } from './startup-errors';
+import { startupReason, startupDiagnostic, type StartupReason } from './startup-errors';
 interface Env { SCANNER_CONTAINER: DurableObjectNamespace<DocumentScanner>; SCANNER_TOKEN: string; }
 export class DocumentScanner extends Container<Env> {
   defaultPort = 8080;
@@ -25,7 +25,7 @@ export class DocumentScanner extends Container<Env> {
       } });
     } catch (error) {
       const reason = startupReason(error);
-      console.error('SCANNER_START_FAILED', { reason, elapsedMs: Date.now() - started });
+      console.error('SCANNER_START_FAILED', { ...startupDiagnostic(error, this.env), elapsedMs: Date.now() - started });
       return unavailable('SCANNER_START_FAILED', reason);
     }
     try { return await super.fetch(request); }
@@ -46,7 +46,7 @@ export default {
       return await container.fetch(new Request(request,{signal:AbortSignal.any([request.signal,AbortSignal.timeout(120_000)])}));
     } catch (error) {
       const reason = startupReason(error);
-      console.error('SCANNER_START_FAILED', { reason });
+      console.error('SCANNER_START_FAILED', startupDiagnostic(error, env));
       return unavailable('SCANNER_START_FAILED', reason);
     }
   },
