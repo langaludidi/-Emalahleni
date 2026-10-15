@@ -4,9 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "npm --prefix scanner install --ignore-scripts --no-audit --no-fund",
     "dev": "wrangler dev --port 8787",
     "dev:web": "next dev web --port 3000",
-    "build": "next build web && wrangler deploy --dry-run --outdir dist/worker",
+    "build": "next build web && wrangler deploy --dry-run --containers-rollout=none --outdir dist/worker",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "test": "node --import tsx tests/run.ts",
     "deploy": "node scripts/deploy.mjs"

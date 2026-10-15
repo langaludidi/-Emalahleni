@@ -21,7 +21,6 @@ function pingDaemon() {
   });
 }
 const server = createScannerServer();
-server.listen(Number(process.env.PORT ?? 8080),'0.0.0.0');
 async function initialise() {
   // Load the image's public seed immediately. No network download precedes clamd startup.
   // The existing per-scan/health freshness gate still rejects missing or >7-day-old signatures.
@@ -36,6 +35,9 @@ async function initialise() {
       const updater=child('freshclam',['--config-file=/app/freshclam.conf','--daemon','--quiet']);
       updater.once('error',()=>console.error('SCANNER_SIGNATURE_UPDATE_FAILED'));
       updater.once('exit',()=>{if(!stopping)console.error('SCANNER_SIGNATURE_UPDATER_STOPPED');});
+      // The Container SDK waits for this port. Keep it closed until the engine accepts commands,
+      // so the first scan after an idle cold start does not race database loading.
+      server.listen(Number(process.env.PORT ?? 8080),'0.0.0.0');
       return;
     }
     await new Promise(resolve=>setTimeout(resolve,1000));
@@ -43,5 +45,5 @@ async function initialise() {
   if(!stopping)console.error('SCANNER_START_NOT_READY');
 }
 void initialise();
-function shutdown() { stopping = true; server.close(); for (const proc of children) proc.kill('SIGTERM'); setTimeout(()=>process.exit(0),5000).unref(); }
+function shutdown() { stopping = true; if(server.listening)server.close(); for (const proc of children) proc.kill('SIGTERM'); setTimeout(()=>process.exit(0),5000).unref(); }
 process.on('SIGTERM',shutdown); process.on('SIGINT',shutdown);

@@ -1,5 +1,5 @@
 """Desktop/mobile preview journeys against the local Worker; Auth is stubbed and no beneficiary data is used."""
-import base64, json, os, subprocess, time, shutil
+import base64, json, os, subprocess, time, shutil, tempfile
 from pathlib import Path
 from urllib.request import urlopen
 from playwright.sync_api import sync_playwright, expect
@@ -9,7 +9,18 @@ review = root / 'review'
 review.mkdir(exist_ok=True)
 env = {**os.environ, 'XDG_CONFIG_HOME': '/tmp/emalahleni-browser-config', 'WRANGLER_LOG_PATH': '/tmp/emalahleni-browser-worker.log'}
 log = open('/tmp/emalahleni-browser-server.log', 'w')
-server = subprocess.Popen(['node', 'node_modules/wrangler/bin/wrangler.js', 'dev', '--ip', '127.0.0.1', '--port', '8790'], cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT)
+# These browser journeys stub document-service HTTP responses. Keep their local
+# Worker free of Docker; the canonical build checks the production entrypoint,
+# and the separate scanner workflow exercises the real image and engine.
+config = json.loads((root / 'wrangler.jsonc').read_text())
+config['main'] = str(root / 'src/worker.ts')
+config['assets']['directory'] = str(root / 'web/out')
+for key in ('containers', 'durable_objects', 'exports'):
+    config.pop(key, None)
+local_config = tempfile.TemporaryDirectory(prefix='emalahleni-browser-')
+config_path = Path(local_config.name) / 'wrangler.jsonc'
+config_path.write_text(json.dumps(config))
+server = subprocess.Popen(['node', 'node_modules/wrangler/bin/wrangler.js', 'dev', '--config', str(config_path), '--ip', '127.0.0.1', '--port', '8790'], cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT)
 base = 'http://127.0.0.1:8790'
 try:
     for attempt in range(60):
@@ -455,3 +466,4 @@ finally:
     try: server.wait(timeout=5)
     except subprocess.TimeoutExpired: server.kill()
     log.close()
+    local_config.cleanup()

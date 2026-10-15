@@ -1,15 +1,15 @@
 # Private document scanner and ID reader
 
-This directory prepares a separate Cloudflare Worker and Container. It is not deployed. The API's document-upload and ID-reading flags must stay off until the service passes live probes through its private service binding.
+This directory provides the private scanner Container attached to the app Worker. The initial isolated Docker/ClamAV/OCR checks passed. The failed 15 October build provisioned the Container but replaced the app handler; the canonical deployment now preserves both in one Worker. The API's document-upload and ID-reading flags stay off until the service passes live checks through its authenticated API probe.
 
-The account owner enabled the **Workers Paid plan** on 15 October 2026. The scanner still needs provisioning; enabling a paid subscription does not establish a running scanner or token permissions. The current published baseline is $5/month for Workers Paid, with separate metered Containers/Workers/Durable Objects usage. This template limits the scanner to **one standard-1 instance (4 GiB RAM, 0.5 vCPU, 8 GB disk)** and sleeps after five minutes idle. At published rates, memory alone costs $0.036 per active hour beyond the included allocation; allocated disk is about $0.002016/hour, CPU is metered separately. These are rates, not a monthly cap. See [Cloudflare pricing](https://developers.cloudflare.com/containers/platform/pricing/) and [instance limits](https://developers.cloudflare.com/containers/platform/limits/).
+The account owner enabled the **Workers Paid plan** on 15 October 2026. The first build created the scanner Container application but accidentally deployed its handler onto the app Worker. The repair retains that application and exports the app and scanner together. A paid subscription alone does not establish live scanner readiness. The current published baseline is $5/month for Workers Paid, with separate metered Containers/Workers/Durable Objects usage. This template limits the scanner to **one standard-1 instance (4 GiB RAM, 0.5 vCPU, 8 GB disk)** and sleeps after five minutes idle. At published rates, memory alone costs $0.036 per active hour beyond the included allocation; allocated disk is about $0.002016/hour, CPU is metered separately. These are rates, not a monthly cap. See [Cloudflare pricing](https://developers.cloudflare.com/containers/platform/pricing/) and [instance limits](https://developers.cloudflare.com/containers/platform/limits/).
 
 ## Processing contract
 
 - POST `/scan`: binary PDF/JPEG/PNG or `application/octet-stream`, maximum 5 MiB; success exactly `{sha256, verdict: 'CLEAN' | 'INFECTED'}`.
 - POST `/read-id`: binary PDF/JPEG/PNG only, maximum 5 MiB; malware scan runs again **before any decoder**. Success exactly `{sha256, text}` with at most 16,000 UTF-8 bytes. An infected file returns HTTP 422 with exactly `{sha256, verdict: 'INFECTED'}`. The API must invalidate its previously clean scan state.
 - GET `/healthz`: authenticated readiness of ClamAV, a signature database no older than seven days, Poppler, Tesseract and its English language data. Missing signatures/tools return 503, never a fabricated clean result.
-- Every endpoint requires `Authorization: Bearer <SCANNER_TOKEN>` (minimum 32 characters). There is no public Worker URL, preview URL, custom domain or route.
+- Every endpoint requires `Authorization: Bearer <SCANNER_TOKEN>` (minimum 32 characters). The app has a public URL, but it does not route public requests to the scanner. Only authenticated, project-scoped API actions can invoke the internal adapter.
 - Freshclam uses the official ClamAV signature mirror; outbound Internet is enabled for signature updates. ID contents are processed inside the private service, never sent to an AI API. OCR text is temporary and returned to the API for deterministic parsing and operator confirmation. OCR is not identity verification or a departmental decision.
 
 PDFs are limited to two pages and rasterised to a maximum side of 2,600 pixels. Images must be at most 6,000 pixels on either side and 12 million pixels total. Processing accepts one document at a time; additional requests return 429. Decoder subprocesses use a non-root account, a 1 GiB address-space limit, CPU and file-size limits, wall-clock cancellation, capped text output and private temporary files removed in a finally block. No document content, source filenames, credentials or raw decoder errors are logged.
@@ -22,10 +22,9 @@ From `emalahleni-app/scanner` with Node 24 and Tesseract/Poppler/util-linux inst
 npm install --ignore-scripts
 npm test
 npm run typecheck
-npm run build
 ```
 
-The deployment lockfile must be generated and reviewed after the pinned packages can be installed. This workspace cannot connect to the npm proxy or Docker socket, so local Worker bundling and Docker validation remain unverified here. The isolated CI workflow installs dependencies, tests HTTP/OCR, builds the image and tests actual ClamAV plus harmless EICAR. It does not deploy anything or use Cloudflare credentials.
+The app root's `npm ci` installs the pinned scanner SDK through its `prepare` script. The app's `npm run build` checks the canonical Worker bundle, including its `DocumentScanner` export. The isolated scanner CI workflow tests HTTP/OCR, builds the image and tests actual ClamAV plus harmless EICAR. It does not deploy anything or use Cloudflare credentials. The initial image and all five scanner tests passed in GitHub Actions; the corrected cold-start implementation must pass again before live acceptance.
 
 On a Docker-capable computer:
 
@@ -36,55 +35,27 @@ docker exec emalahleni-scanner-test node /contract/test/clamav-integration.mjs
 docker rm -f emalahleni-scanner-test
 ```
 
-EICAR belongs only in this isolated test container. Do not submit it to the live app or upload a real ID during setup. The image build downloads the public ClamAV signatures as the non-root scanner user; a failed seed download fails the build. The signature layer precedes the application-code copy, so ordinary source changes can reuse it. Cold starts load that seed immediately instead of downloading the full databases onto each ephemeral disk. Readiness remains 503 while clamd loads the database.
+EICAR belongs only in this isolated test container. Do not submit it to the live app or upload a real ID during setup. The image build downloads the public ClamAV signatures as the non-root scanner user; a failed seed download fails the build. The signature layer precedes the application-code copy, so ordinary source changes can reuse it. Cold starts load that seed immediately instead of downloading the full databases onto each ephemeral disk. The HTTP port stays closed while clamd loads the database, so the Container SDK waits for the engine rather than forwarding the first scan prematurely. A failed daemon start never opens the port.
 
-After clamd answers its private PING command, freshclam starts in the background, checks immediately for incremental updates, and notifies the running daemon to reload them. It checks twelve times daily while the instance remains awake. A missing or more-than-seven-day-old loaded database still blocks every scan and readiness check; the image seed never bypasses that gate. An old cached seed can therefore remain unavailable until its background update and reload complete. Logs contain only generic operational error codes.
+After clamd answers its private PING command, freshclam starts in the background and the HTTP listener opens. The updater checks immediately for incremental updates and notifies the running daemon to reload them. It checks twelve times daily while the instance remains awake. A missing or more-than-seven-day-old loaded database still blocks every scan and readiness check; the image seed never bypasses that gate. An old cached seed can therefore remain unavailable until its background update and reload complete. Logs contain only generic operational error codes.
 
 Public signatures add image size and registry storage, trading that cost for shorter cold starts and fewer complete downloads. Refresh the seed in a regular rebuild at least weekly. For a manual Docker build, use `--build-arg CLAMAV_SIGNATURE_REFRESH=YYYY-MM-DD` with a new date, or invalidate that build layer. The Dockerfile's default refresh value is a build-cache key, not a freshness claim. For Workers Builds, change that default value or supply the matching Container image build variable on the scheduled refresh. Avoid repeated uncached full downloads; the official signature CDN can rate-limit them. The existing isolated Docker CI check must pass against each changed image before enabling uploads.
 
 ## Deployment through the existing app build
 
-The application root now has an orchestrator at `scripts/deploy.mjs`, invoked by its existing `npm run deploy` command. It first runs the read-only Containers permission check. Only after that passes does it build/deploy the private scanner, configure matching scanner/API runtime credentials on initial setup, then deploy the canonical API configuration with `SCANNER` bound. A completed two-sided setup is marked on the scanner Worker; retries preserve that credential. Feature flags remain controlled by the source configuration and currently stay false.
+Use the existing Workers Builds connection for `emalahleni-api-staging`: repository `langaludidi/-Emalahleni`, branch `main`, root `/emalahleni-app`, build `npm run build`, deploy `npm run deploy`. Do not create or deploy a second Worker from this connection. Workers Builds overrides mismatched Worker names to its connected Worker, which caused the first failed deployment.
 
-If the existing Workers Builds token or build's Worker restrictions reject this operation, the deployment stops and the account owner must adjust the selected token or use the separate scanner Worker connection described below. The script preserves inherited provider authentication and guard variables. It does not bypass provider restrictions or activate features based on a successful build alone.
+`wrangler.jsonc` is the only deployment configuration. It preserves the existing `DocumentScanner` export, `SCANNER_CONTAINER` Durable Object binding and Container application name `emalahleni-scanner-staging-documentscanner`. Its `exports.DocumentScanner.container` explicitly references that application. No namespace deletion, rename or transfer is required. `workers_dev=true` restores the public app URL; preview URLs remain off.
 
-After deployment, open a saved case's Documents & readiness step and press **Check document service**. This calls the private health, clean-scan and OCR paths with a fixed synthetic PDF and returns a readiness summary without storing any document or returning OCR text to the browser. It is available while feature flags are off. A successful result is the prerequisite for enabling the source flags for controlled synthetic end-to-end acceptance.
+The production entrypoint exposes the ordinary app API and static assets. It creates a private in-process adapter for the API's `SCANNER` interface. The scanner handler is never the public fetch handler, and no `/scan` or `/read-id` public route is added. Only `SCANNER_TOKEN` is passed to the Container. Preserve the Worker's existing runtime secrets, especially `DATABASE_URL` and `FORM_ENCRYPTION_KEY`. Deployment does not read, generate, print or rotate secrets. Upload and ID-reading flags remain false.
 
-## Provision on the authorised Workers Paid account
+The retired scanner-only Wrangler configuration and multi-Worker deployment script must not be reused: the failed build attached `DocumentScanner` to the API Worker, so app versions must continue exporting that class. Removing it produces provider error 10064. The existing Container name must remain explicit to avoid creating a second application under the API Worker's name.
 
-Use the existing account `f887a522ca852a80491c2485853d4363`. Create a **separate Worker** named `emalahleni-scanner-staging`, linked to GitHub `langaludidi/-Emalahleni`, branch `main`, root directory `/emalahleni-app/scanner`.
-
-Configure Workers Builds:
-
-| Setting | Value |
-| --- | --- |
-| Root directory | `/emalahleni-app/scanner` |
-| Build command | `npm run build` |
-| Deploy command | `npm run deploy` |
-| Preview / non-production builds | Disabled |
-| Worker public access | No workers.dev URL, preview URL or public routes |
-
-The automatically created Workers Builds token documents Account Settings (read), Workers Scripts (edit), Workers KV Storage (edit), Workers R2 Storage (edit) and Workers Routes (edit). Containers access is not listed. Check that the selected token also has the required Containers permissions; an account upgrade does not establish this. If provisioning fails with an authorisation error, report it and adjust the selected token through the account owner rather than bypassing it.
-
-Wrangler's deploy builds and pushes the Linux/amd64 Dockerfile. A successful Worker publish does not prove container provisioning completed; check Containers status and perform the private probes below.
-
-Set a **runtime secret** named `SCANNER_TOKEN` on the scanner Worker, using exactly the same private value as the API Worker's existing `SCANNER_TOKEN`. Do not put it in build variables, wrangler.jsonc, GitHub, screenshots, chat or command arguments. Use the Cloudflare secret field, or from an authorised local terminal `npx wrangler secret put SCANNER_TOKEN` and paste only into its private prompt. The Worker passes that secret to the container at startup. The API token must remain a runtime secret.
-
-For a CLI deployment, from `emalahleni-app/scanner` after authentication to the account:
-
-```sh
-npm install --ignore-scripts
-npm run build
-npm run deploy
-npx wrangler secret put SCANNER_TOKEN
-npx wrangler containers list
-```
-
-The API's `SCANNER` service binding must be added **only after this Worker and its container exist successfully**, pointing to `emalahleni-scanner-staging`. Provisioning can take several minutes. Keep `ENABLE_DOCUMENT_UPLOADS=false` and `ENABLE_ID_READING=false` during setup.
+After deployment, open a saved case's Documents & readiness step and press **Check document service**. This calls private health, clean-scan and OCR paths with a fixed synthetic PDF and returns a readiness summary without storing any document or returning OCR text to the browser. It works while feature flags are off. A successful result precedes controlled synthetic upload/read/review acceptance.
 
 ## Live acceptance before enabling features
 
-Use an authenticated internal probe through the API service binding, never a public scanner route. Check readiness once, then retry manually after provisioning/database loading completes; do not keep an idle container awake with continuous health polling. The API should allow approximately **45 seconds for scan/health requests** and **90 seconds for ID reading**, including cold start. The adapter allows up to 30 seconds for a listening container port; document processing itself has a 50-second deadline. A 503 during database loading, or while refreshing an expired cached seed, is expected and must show a retryable unavailable status, not an empty/clean document.
+Use the authenticated internal probe through the app API, never a public scanner route. Check readiness once, then retry manually after provisioning/database loading completes; do not keep an idle container awake with continuous health polling. The API should allow approximately **45 seconds for scan/health requests** and **120 seconds for ID reading**, including cold start. The adapter allows up to 30 seconds for a listening container port; document processing itself has a 50-second deadline. If database loading exceeds the 30-second port-readiness limit, or an expired cached seed is still refreshing, a 503 is possible and must show a retryable unavailable status, not an empty/clean document.
 
 1. GET private `/healthz` reports ready; wrong/missing credentials are rejected.
 2. Upload a synthetic PDF through the API: R2 bytes, stored hash and scanner hash agree; status advances to CLEAN and still awaits assessor review.
