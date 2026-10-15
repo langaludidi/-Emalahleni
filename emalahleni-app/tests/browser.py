@@ -1,5 +1,5 @@
 """Desktop/mobile preview journeys against the local Worker; Auth is stubbed and no beneficiary data is used."""
-import json, os, subprocess, time, shutil
+import base64, json, os, subprocess, time, shutil
 from pathlib import Path
 from urllib.request import urlopen
 from playwright.sync_api import sync_playwright
@@ -141,23 +141,37 @@ try:
             signed_in = {'value':False}
             auth_user = {'id':'synthetic-user','name':'Synthetic Officer','email':'synthetic@emalahleni.invalid','emailVerified':True,'createdAt':'2026-10-01T00:00:00Z','updatedAt':'2026-10-01T00:00:00Z'}
             auth_session = {'id':'synthetic-session','userId':'synthetic-user','token':'synthetic-session-token','expiresAt':'2099-01-01T00:00:00Z','createdAt':'2026-10-01T00:00:00Z','updatedAt':'2026-10-01T00:00:00Z'}
+            def encoded(value):
+                return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip('=')
+            browser_token = encoded({'alg':'EdDSA'}) + '.' + encoded({'sub':'synthetic-user','exp':int(time.time())+900}) + '.synthetic-signature'
+            auth_headers = {'set-auth-jwt':browser_token,'access-control-expose-headers':'set-auth-jwt','access-control-allow-origin':base,'access-control-allow-credentials':'true'}
+            project_tokens = []
             def successful_sign_in(route):
                 signed_in['value'] = True
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({'token':'synthetic-session-token','user':auth_user,'session':auth_session}))
+                route.fulfill(status=200, headers=auth_headers, content_type='application/json', body=json.dumps({'token':'synthetic-session-token','user':auth_user,'session':auth_session}))
             def session_response(route):
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({'session':auth_session,'user':auth_user} if signed_in['value'] else None))
+                route.fulfill(status=200, headers=auth_headers if signed_in['value'] else {}, content_type='application/json', body=json.dumps({'session':auth_session,'user':auth_user} if signed_in['value'] else None))
             def successful_sign_out(route):
                 signed_in['value'] = False
                 route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True}))
             page.route('**/sign-in/email', successful_sign_in)
             page.route('**/get-session*', session_response)
             page.route('**/sign-out', successful_sign_out)
-            page.route('**/token', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'token':'synthetic-browser-only-token'})))
-            page.route('**/api/projects', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]})))
+            def project_response(route):
+                project_tokens.append(route.request.headers.get('authorization'))
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]}))
+            page.route('**/api/projects', project_response)
+            def wait_for_project():
+                try:
+                    page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
+                except Exception:
+                    print(json.dumps({'status':page.get_by_role('status').all_text_contents(),'scriptErrors':errors}), flush=True)
+                    page.screenshot(path=str(review / (label + '-project-load-failure.png')), full_page=True)
+                    raise
             page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
             page.get_by_role('button', name='Sign in', exact=True).click()
-            page.get_by_label('Project').wait_for()
-            page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            wait_for_project()
+            assert project_tokens == ['Bearer ' + browser_token]
             assert not page.get_by_label('Email', exact=True).is_visible()
             assert not page.get_by_label('Password', exact=True).is_visible()
             assert not page.get_by_role('button', name='Forgot password', exact=True).is_visible()
@@ -166,9 +180,9 @@ try:
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             page.screenshot(path=str(review / (label + '-signed-in.png')), full_page=True)
             page.reload(wait_until='domcontentloaded')
-            page.get_by_label('Project').wait_for()
-            page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            wait_for_project()
             assert page.get_by_label('Project').locator('option', has_text='Synthetic staging').count() == 1
+            assert len(project_tokens) >= 2 and all(token == 'Bearer ' + browser_token for token in project_tokens)
             assert not page.get_by_label('Email', exact=True).is_visible()
             page.locator('summary', has_text='Account').click()
             assert page.get_by_text('Signed in as Synthetic Officer', exact=True).is_visible()

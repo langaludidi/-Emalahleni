@@ -38,21 +38,27 @@ export default function Page() {
   const site = <K extends keyof CaseForm['site']>(key: K, value: CaseForm['site'][K]) => { dirty(); setForm(f=>({...f,site:{...f.site,[key]:value,...(['latitude','longitude','verificationDate'].includes(key)?{photoParametersConfirmed:false,photoMetadataSource:'MANUAL' as const,photoMetadataSha256:''}:{})}})); };
   function applyPhoto(p:PhotoProposal){dirty();setForm(f=>({...f,site:{...f.site,latitude:p.latitude,longitude:p.longitude,verificationDate:p.date,photoParametersConfirmed:false,houseTypeConfirmed:false,photoMetadataSha256:p.sha256,photoMetadataSource:'EXIF'}}));}
   async function run(action:()=>Promise<void>) { setBusy(true); try { await action(); } catch(e) { setStatus(e instanceof Error ? e.message : 'Unable to complete this action.'); } finally { setBusy(false); } }
+  async function accessToken() {
+    // Neon injects its JWT into session.token, including cached sign-in responses.
+    const result=await auth.getSession();const token=result.data?.session?.token;
+    if(result.error || !token || token.split('.').length!==3)throw new Error('Sign out and sign in again to continue.');
+    return token;
+  }
   async function api(path: string, method='GET', data?: unknown) {
-    const token = await auth.token(); if (token.error || !token.data?.token) throw new Error('Sign in again to continue.');
-    const response = await fetch(path,{method, headers:{Authorization:`Bearer ${token.data.token}`,'Content-Type':'application/json'}, ...(data === undefined ? {} : {body:JSON.stringify(data)})});
+    const token = await accessToken();
+    const response = await fetch(path,{method, headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, ...(data === undefined ? {} : {body:JSON.stringify(data)})});
     const result=await response.json(); if (!response.ok) throw new Error(result.error==='CASE_API_NOT_CONFIGURED' ? 'Connected case saving is awaiting server configuration. Preview is available now.' : result.error==='SAVE_CONFLICT_OR_DENIED' ? 'This draft changed or is no longer editable. Reload it before saving again.' : result.error ?? 'Request failed.');
     return result;
   }
-  async function sendFile(path:string,bytes:ArrayBuffer,type:string){const token=await auth.token();if(!token.data?.token)throw new Error('Sign in again to continue.');const response=await fetch(path,{method:'PUT',headers:{Authorization:`Bearer ${token.data.token}`,'Content-Type':type},body:bytes});const result=await response.json();if(!response.ok)throw new Error(result.error??'Upload failed.');return result;}
-  async function downloadFile(path:string,filename:string){const token=await auth.token();if(!token.data?.token)throw new Error('Sign in again to continue.');const response=await fetch(path,{headers:{Authorization:`Bearer ${token.data.token}`}});if(!response.ok)throw new Error('This file is unavailable or has not passed scanning.');const objectUrl=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=objectUrl;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);}
+  async function sendFile(path:string,bytes:ArrayBuffer,type:string){const token=await accessToken();const response=await fetch(path,{method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':type},body:bytes});const result=await response.json();if(!response.ok)throw new Error(result.error??'Upload failed.');return result;}
+  async function downloadFile(path:string,filename:string){const token=await accessToken();const response=await fetch(path,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('This file is unavailable or has not passed scanning.');const objectUrl=URL.createObjectURL(await response.blob());const link=document.createElement('a');link.href=objectUrl;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);}
   async function snapshot():Promise<ExportSnapshot>{
     if(mode==='connected'){if(!active)throw new Error('Save and load a case before exporting.');if(editable)await save();return api(`/api/projects/${project}/applications/${active.id}/export`);}
     const checked=formSchema.parse(form),generatedAt=new Date().toISOString();return {applicationId:'',projectId:'',reference:'PREVIEW',version:0,form:checked,readiness:evaluate(checked,[],[],generatedAt.slice(0,10)),evidence:[],reviews:[],generatedAt,fingerprint:'preview',preview:true};
   }
   async function exportPdf(pack:boolean){
     const data=await snapshot();const exports=await import('./pdf-exports');
-    const blob=pack?await exports.draftPack(data,async id=>{const token=await auth.token();if(!token.data?.token)throw new Error('Sign in again to continue.');const response=await fetch(`/api/projects/${data.projectId}/applications/${data.applicationId}/evidence/${id}/download`,{headers:{Authorization:`Bearer ${token.data.token}`}});if(!response.ok)throw new Error('An evidence document is no longer available. Refresh before exporting.');return response.arrayBuffer();},async()=>{const current=await api(`/api/projects/${data.projectId}/applications/${data.applicationId}/export`);return current.fingerprint;}):await exports.summaryPdf(data);
+    const blob=pack?await exports.draftPack(data,async id=>{const token=await accessToken();const response=await fetch(`/api/projects/${data.projectId}/applications/${data.applicationId}/evidence/${id}/download`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('An evidence document is no longer available. Refresh before exporting.');return response.arrayBuffer();},async()=>{const current=await api(`/api/projects/${data.projectId}/applications/${data.applicationId}/export`);return current.fingerprint;}):await exports.summaryPdf(data);
     const objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=`${data.reference}-${pack?'draft-pack':'verification-summary'}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setStatus(pack?'Draft pack generated from verified, clean evidence. Submission remains unapproved.':'Verification summary generated.');
   }
   async function loadProjects() { const result=await api('/api/projects');setProjects(result.projects);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
