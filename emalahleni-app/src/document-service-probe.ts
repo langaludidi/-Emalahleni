@@ -27,31 +27,49 @@ function syntheticPdf(){
 }
 const specimen=syntheticPdf();
 export interface DocumentServiceProbe {status:'ready';checks:{scannerHealth:true;cleanScan:true;idReading:true};}
+export type DocumentServiceCheck='STARTUP'|'CONNECTION'|'CREDENTIALS'|'HEALTH'|'SCAN'|'ID_READING'|'ID_VALIDATION';
+export class DocumentServiceCheckError extends HttpError {
+ constructor(readonly failedCheck:DocumentServiceCheck){super(503,'DOCUMENT_SERVICE_NOT_READY');}
+}
 
 export async function probeDocumentService(env:EvidenceEnv):Promise<DocumentServiceProbe>{
  if(!env.SCANNER||!env.SCANNER_TOKEN||env.SCANNER_TOKEN.length<32)throw new HttpError(503,'DOCUMENT_SERVICE_NOT_CONFIGURED');
  const scanner=env.SCANNER,token=env.SCANNER_TOKEN;
+ let check:DocumentServiceCheck='HEALTH';
  async function call(path:string,timeout:number,bytes?:Uint8Array){
   const response=await scanner.fetch(new Request(`https://scanner.internal${path}`,{
    method:bytes?'POST':'GET',headers:{Authorization:`Bearer ${token}`,...(bytes?{'Content-Type':'application/pdf'}:{})},
    ...(bytes?{body:new Uint8Array(bytes).buffer}:{}),signal:AbortSignal.timeout(timeout)
   }));
-  if(response.status!==200){await response.body?.cancel();throw new Error('NOT_READY');}
+  if(response.status!==200){
+   if(response.status===401){await response.body?.cancel();throw new DocumentServiceCheckError('CREDENTIALS');}
+   // Only fixed operational codes may cross this boundary. Never forward provider text.
+   try{
+    const value=JSON.parse(new TextDecoder().decode(await readBytes(response,1024))) as {error?:unknown};
+    if(value.error==='SCANNER_START_FAILED')throw new DocumentServiceCheckError('STARTUP');
+    if(value.error==='SCANNER_CONNECTION_FAILED')throw new DocumentServiceCheckError('CONNECTION');
+   }catch(error){if(error instanceof DocumentServiceCheckError)throw error;}
+   throw new DocumentServiceCheckError(check);
+  }
   return JSON.parse(new TextDecoder().decode(await readBytes(response,131072))) as unknown;
  }
  try{
   if(!validSaId(syntheticId))throw new Error('INVALID_SPECIMEN');
   const sha256=await digest(specimen);
   healthSchema.parse(await call('/healthz',45000));
+  check='SCAN';
   const scanned=scanSchema.parse(await call('/scan',45000,specimen));
   if(scanned.sha256!==sha256)throw new Error('SCAN_HASH_MISMATCH');
+  check='ID_READING';
   const reading=readingSchema.parse(await call('/read-id',120000,specimen));
   if(reading.sha256!==sha256)throw new Error('READ_HASH_MISMATCH');
+  check='ID_VALIDATION';
   const parsed=parseIdText(reading.text);
   if(parsed.fields.firstNames!=='SYNTHETIC TEST'||parsed.fields.surname!=='EXAMPLE'||parsed.fields.idNumber!==syntheticId||parsed.dateOfBirth!=='1990-01-01')throw new Error('READ_MISMATCH');
   return {status:'ready',checks:{scannerHealth:true,cleanScan:true,idReading:true}};
- }catch{
+ }catch(error){
   // Provider messages and OCR text never become API errors, audit data or logs.
-  throw new HttpError(503,'DOCUMENT_SERVICE_NOT_READY');
+  if(error instanceof DocumentServiceCheckError)throw error;
+  throw new DocumentServiceCheckError(check);
  }
 }

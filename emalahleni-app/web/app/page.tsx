@@ -53,7 +53,7 @@ export default function Page() {
   async function api(path: string, method='GET', data?: unknown) {
     const token = await accessToken();
     const response = await fetch(path,{method, headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, ...(data === undefined ? {} : {body:JSON.stringify(data)})});
-    const result=await response.json(); if (!response.ok) throw new Error(result.error==='CASE_API_NOT_CONFIGURED' ? 'Connected case saving is awaiting server configuration. Preview is available now.' : result.error==='SAVE_CONFLICT_OR_DENIED' ? 'This draft changed or is no longer editable. Reload it before saving again.' : result.error ?? 'Request failed.');
+    const result=await response.json(); if (!response.ok) throw new Error(result.error==='CASE_API_NOT_CONFIGURED' ? 'Connected case saving is awaiting server configuration. Preview is available now.' : result.error==='SAVE_CONFLICT_OR_DENIED' ? 'This draft changed or is no longer editable. Reload it before saving again.' : result.error==='DOCUMENT_SERVICE_NOT_READY'&&typeof result.failedCheck==='string'?`${result.error}:${result.failedCheck}`:result.error ?? 'Request failed.');
     return result;
   }
   async function sendFile(path:string,bytes:ArrayBuffer,type:string){const token=await accessToken();const response=await fetch(path,{method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':type},body:bytes});const result=await response.json();if(!response.ok)throw new Error(result.error??'Upload failed.');return result;}

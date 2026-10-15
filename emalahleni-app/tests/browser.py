@@ -213,7 +213,7 @@ try:
             stored_cases = {}
             writes = []
             fail_save = {'value':False}
-            upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
+            upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'service_error':None,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
             evidence_documents, upload_intents, uploaded_bytes = [], [], []
             id_reads = []
             def valid_synthetic_id():
@@ -229,6 +229,8 @@ try:
                 status = 200
                 if suffix.endswith('/document-service-check') and method == 'POST':
                     status, result = (200, {'status':'ready','checks':{'scannerHealth':True,'cleanScan':True,'idReading':True},'uploadsEnabled':False,'idReadingEnabled':False}) if upload_state['service_ready'] else (503, {'error':'DOCUMENT_SERVICE_NOT_CONFIGURED'})
+                    if upload_state['service_error']:
+                        status, result = 503, upload_state['service_error']
                 elif suffix.endswith('/evidence') and method == 'GET':
                     if upload_state['fail_register']:
                         status, result = 503, {'error':'TEST_REGISTER_UNAVAILABLE'}
@@ -352,6 +354,13 @@ try:
             assert upload_intents == [] and uploaded_bytes == []
             page.get_by_role('button', name='Check document service', exact=True).click()
             page.get_by_text('The private document service is not connected yet.', exact=True).wait_for()
+            upload_state['service_error'] = {'error':'DOCUMENT_SERVICE_NOT_READY','failedCheck':'STARTUP'}
+            page.get_by_role('button', name='Check document service', exact=True).click()
+            page.get_by_text('The scanner could not start. Please report this startup message.', exact=True).wait_for()
+            upload_state['service_error'] = {'error':'EVIDENCE_ACTION_DENIED'}
+            page.get_by_role('button', name='Check document service', exact=True).click()
+            page.get_by_text('Your account does not have permission to check the document service for this saved case.', exact=True).wait_for()
+            upload_state['service_error'] = None
             upload_state['service_ready'] = True
             page.get_by_role('button', name='Check document service', exact=True).click()
             page.get_by_text('The scanner and ID reader passed their synthetic checks. Uploads and ID reading are awaiting activation.', exact=True).wait_for()

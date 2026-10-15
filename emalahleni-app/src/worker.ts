@@ -8,7 +8,7 @@ import { HttpError } from './http';
 import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured, type EvidenceEnv } from './evidence';
 import {exportSnapshot} from './export-snapshot';
 import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-document';
-import {probeDocumentService} from './document-service-probe';
+import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
 import {evidenceWriterRoles} from './evidence-contracts';
 
 export interface Env extends IdReadingEnv {
@@ -141,7 +141,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if(action==='export'&&request.method==='GET'&&!route[4])return json(await exportSnapshot(db,actor,project,id,env.FORM_ENCRYPTION_KEY));
     throw new HttpError(405, 'METHOD_NOT_ALLOWED');
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.code }, e.status);
+    if (e instanceof HttpError) return json({ error: e.code, ...(e instanceof DocumentServiceCheckError?{failedCheck:e.failedCheck}:{}) }, e.status);
     if (e instanceof ZodError) return json({ error: 'VALIDATION_FAILED', fields: e.issues.map(i => ({ path: i.path.join('.'), message: i.message })) }, 400);
     if ((e as { code?: string }).code === '23505') return json({ error: 'REFERENCE_ALREADY_EXISTS' }, 409);
     if ((e as { code?: string }).code === '42501') return json({ error: 'ACCESS_DENIED' }, 403);

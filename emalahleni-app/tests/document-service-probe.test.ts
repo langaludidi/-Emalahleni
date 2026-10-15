@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PDFDocument} from 'pdf-lib';
-import {probeDocumentService} from '../src/document-service-probe';
+import {probeDocumentService,DocumentServiceCheckError} from '../src/document-service-probe';
 import {digest,type EvidenceEnv} from '../src/evidence';
 import {HttpError} from '../src/http';
 
@@ -58,4 +58,21 @@ test('mismatched hashes, unclean scans, malformed OCR and incorrect identity ext
   h.env.SCANNER={fetch:async(request:Request)=>new URL(request.url).pathname==='/read-id'?makeResponse(await digest(new Uint8Array(await request.arrayBuffer()))):normal(request)} as Fetcher;
   await assert.rejects(probeDocumentService(h.env),notReady);
  }
+});
+
+test('failed service checks expose only fixed diagnostic stages and never private provider details',async()=>{
+ for(const [response,stage] of [
+  [Response.json({error:'SCANNER_START_FAILED'},{status:503}),'STARTUP'],
+  [Response.json({error:'SCANNER_CONNECTION_FAILED'},{status:503}),'CONNECTION'],
+  [new Response('private token and provider details',{status:401}),'CREDENTIALS'],
+  [new Response('private token and provider details',{status:503}),'HEALTH'],
+  [Response.json({error:'private token and provider details'},{status:503}),'HEALTH'],
+ ] as const){
+  const h=harness();h.state.health=response;
+  await assert.rejects(probeDocumentService(h.env),error=>error instanceof DocumentServiceCheckError&&error.code==='DOCUMENT_SERVICE_NOT_READY'&&error.failedCheck===stage&&!error.message.includes('private'));
+ }
+ const h=harness();h.state.scan=new Response('private decoder details',{status:503});
+ await assert.rejects(probeDocumentService(h.env),error=>error instanceof DocumentServiceCheckError&&error.failedCheck==='SCAN');
+ const reading=harness();reading.state.reading=new Response('private decoder details',{status:503});
+ await assert.rejects(probeDocumentService(reading.env),error=>error instanceof DocumentServiceCheckError&&error.failedCheck==='ID_READING');
 });

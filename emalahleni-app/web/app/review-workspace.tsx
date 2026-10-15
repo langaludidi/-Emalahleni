@@ -36,7 +36,24 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
  async function checkDocumentService(){
   setBusy(true);setServiceError(false);setServiceMessage('Checking the private scanner and ID reader with a synthetic document. This can take a few minutes.');
   try{const result=await api(root+'/document-service-check','POST');if(result.status!=='ready')throw new Error('DOCUMENT_SERVICE_NOT_READY');setServiceMessage(result.uploadsEnabled&&result.idReadingEnabled?'The scanner and ID reader passed their synthetic checks.':'The scanner and ID reader passed their synthetic checks. Uploads and ID reading are awaiting activation.');}
-  catch(error){setServiceError(true);const code=error instanceof Error?error.message:'';setServiceMessage(code==='DOCUMENT_SERVICE_NOT_CONFIGURED'?'The private document service is not connected yet.':'The document service is not ready. Container provisioning and its first signature update can take several minutes. Try this check again later.');}
+  catch(error){
+   setServiceError(true);const code=error instanceof Error?error.message:'';
+   const messages:Record<string,string>={
+    UNAUTHENTICATED:'Your sign-in session could not be verified. Sign out, sign in again and retry the document-service check.',
+    EVIDENCE_ACTION_DENIED:'Your account does not have permission to check the document service for this saved case.',
+    ACCESS_DENIED:'Your account could not access this saved case. Please report this case-access message.',
+    SERVICE_UNAVAILABLE:'The application could not complete the document-service check. Please report this application-check message.',
+    DOCUMENT_SERVICE_NOT_CONFIGURED:'The private document service is not connected yet.',
+    'DOCUMENT_SERVICE_NOT_READY:STARTUP':'The scanner could not start. Please report this startup message.',
+    'DOCUMENT_SERVICE_NOT_READY:CONNECTION':'The scanner started but could not be reached. Please report this connection message.',
+    'DOCUMENT_SERVICE_NOT_READY:CREDENTIALS':'The scanner rejected the service connection. Please report this connection message.',
+    'DOCUMENT_SERVICE_NOT_READY:HEALTH':'The scanner or ID reader is not ready. Please report this health-check message.',
+    'DOCUMENT_SERVICE_NOT_READY:SCAN':'The synthetic document did not pass the scan check. Please report this scan-check message.',
+    'DOCUMENT_SERVICE_NOT_READY:ID_READING':'The scan passed, but the synthetic ID could not be read. Please report this ID-reading message.',
+    'DOCUMENT_SERVICE_NOT_READY:ID_VALIDATION':'The scan and reading completed, but the synthetic ID details did not match. Please report this ID-details message.',
+   };
+   setServiceMessage(messages[code]??'The document-service check could not complete. Please report this check message.');
+  }
   finally{setBusy(false);}
  }
  async function readIdentity(){
