@@ -2,6 +2,7 @@ import {z} from 'zod';
 import {digest,type EvidenceEnv} from './evidence';
 import {HttpError,readBytes} from './http';
 import {parseIdText,validSaId} from './id-reading';
+import {startupReasons} from '../scanner/startup-errors';
 
 const healthSchema=z.object({status:z.literal('ready'),malwareScanner:z.literal('ready'),idReader:z.literal('ready')}).strict();
 const scanSchema=z.object({sha256:z.string().regex(/^[a-f0-9]{64}$/),verdict:z.literal('CLEAN')}).strict();
@@ -27,7 +28,7 @@ function syntheticPdf(){
 }
 const specimen=syntheticPdf();
 export interface DocumentServiceProbe {status:'ready';checks:{scannerHealth:true;cleanScan:true;idReading:true};}
-export type DocumentServiceCheck='STARTUP'|'CONNECTION'|'CREDENTIALS'|'HEALTH'|'SCAN'|'ID_READING'|'ID_VALIDATION';
+export type DocumentServiceCheck='STARTUP'|'STARTUP_CONFIGURATION'|'STARTUP_INSTANCE'|'STARTUP_PORT'|'STARTUP_EXIT'|'STARTUP_RPC'|'CONNECTION'|'CREDENTIALS'|'HEALTH'|'SCAN'|'ID_READING'|'ID_VALIDATION';
 export class DocumentServiceCheckError extends HttpError {
  constructor(readonly failedCheck:DocumentServiceCheck){super(503,'DOCUMENT_SERVICE_NOT_READY');}
 }
@@ -45,8 +46,11 @@ export async function probeDocumentService(env:EvidenceEnv):Promise<DocumentServ
    if(response.status===401){await response.body?.cancel();throw new DocumentServiceCheckError('CREDENTIALS');}
    // Only fixed operational codes may cross this boundary. Never forward provider text.
    try{
-    const value=JSON.parse(new TextDecoder().decode(await readBytes(response,1024))) as {error?:unknown};
-    if(value.error==='SCANNER_START_FAILED')throw new DocumentServiceCheckError('STARTUP');
+    const value=JSON.parse(new TextDecoder().decode(await readBytes(response,1024))) as {error?:unknown;reason?:unknown};
+    if(value.error==='SCANNER_START_FAILED'){
+     const reason=startupReasons.find(candidate=>candidate===value.reason);
+     throw new DocumentServiceCheckError(reason&&reason!=='UNKNOWN'?`STARTUP_${reason}`:'STARTUP');
+    }
     if(value.error==='SCANNER_CONNECTION_FAILED')throw new DocumentServiceCheckError('CONNECTION');
    }catch(error){if(error instanceof DocumentServiceCheckError)throw error;}
    throw new DocumentServiceCheckError(check);
@@ -56,7 +60,7 @@ export async function probeDocumentService(env:EvidenceEnv):Promise<DocumentServ
  try{
   if(!validSaId(syntheticId))throw new Error('INVALID_SPECIMEN');
   const sha256=await digest(specimen);
-  healthSchema.parse(await call('/healthz',45000));
+  healthSchema.parse(await call('/healthz',120000));
   check='SCAN';
   const scanned=scanSchema.parse(await call('/scan',45000,specimen));
   if(scanned.sha256!==sha256)throw new Error('SCAN_HASH_MISMATCH');

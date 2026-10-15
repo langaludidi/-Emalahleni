@@ -4,6 +4,7 @@ import {PDFDocument} from 'pdf-lib';
 import {probeDocumentService,DocumentServiceCheckError} from '../src/document-service-probe';
 import {digest,type EvidenceEnv} from '../src/evidence';
 import {HttpError} from '../src/http';
+import {startupReason} from '../scanner/startup-errors';
 
 const text='NAMES: SYNTHETIC TEST\nSURNAME: EXAMPLE\nIDENTITY NUMBER: 9001010000080\nDATE OF BIRTH: 1990-01-01';
 const notReady=(error:unknown)=>error instanceof HttpError&&error.status===503&&error.code==='DOCUMENT_SERVICE_NOT_READY';
@@ -64,6 +65,9 @@ test('failed service checks expose only fixed diagnostic stages and never privat
  for(const [response,stage] of [
   [Response.json({error:'SCANNER_START_FAILED'},{status:503}),'STARTUP'],
   [Response.json({error:'SCANNER_CONNECTION_FAILED'},{status:503}),'CONNECTION'],
+  [Response.json({error:'SCANNER_START_FAILED',reason:'CONFIGURATION'},{status:503}),'STARTUP_CONFIGURATION'],
+  [Response.json({error:'SCANNER_START_FAILED',reason:'PORT'},{status:503}),'STARTUP_PORT'],
+  [Response.json({error:'SCANNER_START_FAILED',reason:'private details'},{status:503}),'STARTUP'],
   [new Response('private token and provider details',{status:401}),'CREDENTIALS'],
   [new Response('private token and provider details',{status:503}),'HEALTH'],
   [Response.json({error:'private token and provider details'},{status:503}),'HEALTH'],
@@ -75,4 +79,15 @@ test('failed service checks expose only fixed diagnostic stages and never privat
  await assert.rejects(probeDocumentService(h.env),error=>error instanceof DocumentServiceCheckError&&error.failedCheck==='SCAN');
  const reading=harness();reading.state.reading=new Response('private decoder details',{status:503});
  await assert.rejects(probeDocumentService(reading.env),error=>error instanceof DocumentServiceCheckError&&error.failedCheck==='ID_READING');
+});
+
+test('startup diagnostics classify known SDK failures without returning provider messages',()=>{
+ for(const [message,reason] of [
+  ['Containers have not been enabled for this Durable Object class.','CONFIGURATION'],
+  ['startAndWaitForPorts is not a function','RPC'],
+  ['Container exited before we could determine health, exit code: 1','EXIT'],
+  ['Container is not listening on port 8080','PORT'],
+  ['Container did not start after 30000ms','INSTANCE'],
+  ['PRIVATE PROVIDER MESSAGE AND TOKEN','UNKNOWN'],
+ ] as const)assert.equal(startupReason(new Error(message)),reason);
 });

@@ -23,7 +23,7 @@ jobs:
       - run: npm install --ignore-scripts --no-audit --no-fund
       - run: npm test && npm run typecheck
       - run: docker build --platform linux/amd64 -t emalahleni-scanner-test .
-      - run: docker run -d --name emalahleni-scanner-test --memory 4g --cpus 1 --mount type=bind,src="$PWD",dst=/contract,readonly --env SCANNER_TOKEN=synthetic-scanner-integration-token-00000000 emalahleni-scanner-test
+      - run: docker run -d --name emalahleni-scanner-test --memory 4g --cpus 0.5 --mount type=bind,src="$PWD",dst=/contract,readonly --env SCANNER_TOKEN=synthetic-scanner-integration-token-00000000 emalahleni-scanner-test
       - run: docker exec emalahleni-scanner-test node /contract/test/clamav-integration.mjs
       - if: always()
         run: docker rm -f emalahleni-scanner-test

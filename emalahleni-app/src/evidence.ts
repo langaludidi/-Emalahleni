@@ -27,7 +27,7 @@ export async function createIntent(db:Database,actor:string,project:string,appli
 }
 export async function scanVerdict(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<'CLEAN'|'INFECTED'|'SCAN_FAILED'>{
  if(!env.SCANNER||!env.SCANNER_TOKEN)return 'SCAN_FAILED';
- try{const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal:AbortSignal.timeout(45000)}));if(!response.ok)return 'SCAN_FAILED';const value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(await response.json());return value.sha256===sha256?value.verdict:'SCAN_FAILED';}catch{return 'SCAN_FAILED';}
+ try{const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal:AbortSignal.timeout(120000)}));if(!response.ok)return 'SCAN_FAILED';const value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(await response.json());return value.sha256===sha256?value.verdict:'SCAN_FAILED';}catch{return 'SCAN_FAILED';}
 }
 async function recordScan(db:Database,actor:string,project:string,application:string,id:string,hash:string,verdict:string){
  const status=verdict==='CLEAN'?'PENDING_REVIEW':verdict==='INFECTED'?'REJECTED':'PENDING_SCAN';

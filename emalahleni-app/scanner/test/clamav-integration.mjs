@@ -7,11 +7,13 @@ const base='http://127.0.0.1:8080', secret=process.env.SCANNER_TOKEN;
 if (!secret || secret.length<32) throw new Error('Set the isolated test credential.');
 const headers={Authorization:`Bearer ${secret}`};
 let ready=false;
-for(let i=0;i<120;i++) {
+const started=Date.now(),deadline=started+90_000;
+while(Date.now()<deadline) {
   try { if((await fetch(base+'/healthz',{headers,signal:AbortSignal.timeout(3000)})).ok){ready=true;break;} }catch{}
   await new Promise(resolve=>setTimeout(resolve,2000));
 }
-assert.equal(ready,true,'ClamAV signatures and OCR tools must become ready within four minutes.');
+assert.equal(ready,true,'ClamAV signatures and OCR tools must become ready within the 90-second startup budget.');
+console.log(`Synthetic scanner readiness reached after ${Date.now()-started}ms.`);
 assert.equal((await fetch(base+'/healthz')).status,401);
 const bytes=syntheticPdf(),sha256=createHash('sha256').update(bytes).digest('hex');
 const clean=await fetch(base+'/scan',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:bytes});
