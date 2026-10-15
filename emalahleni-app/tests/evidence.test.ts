@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { uploadSchema,reviewSchema,scanVerdict,validSignature,digest } from '../src/evidence';
+import { uploadSchema,reviewSchema,scanVerdict,validSignature,digest,uploadsConfigured,createIntent,upload,rescan,type EvidenceEnv } from '../src/evidence';
+import type {Database} from '../src/database';
+import {HttpError} from '../src/http';
 const bytes=new TextEncoder().encode('%PDF-1.4\nSynthetic document');
+test('upload availability and every upload entry point require enabled storage and scanner before touching data',async()=>{
+ const ready:EvidenceEnv={ENABLE_DOCUMENT_UPLOADS:'true',EVIDENCE_BUCKET:{} as R2Bucket,SCANNER:{} as Fetcher,SCANNER_TOKEN:'synthetic-token'};
+ assert.equal(uploadsConfigured(ready),true);
+ const blocked:EvidenceEnv[]=[{}, {...ready,ENABLE_DOCUMENT_UPLOADS:'false'},...Object.keys(ready).map(key=>({...ready,[key]:undefined}))];
+ const db={forActor:async()=>{throw new Error('Database must not be touched');}} as unknown as Database;
+ for(const env of blocked){
+  assert.equal(uploadsConfigured(env),false);
+  const unavailable=(error:unknown)=>error instanceof HttpError&&error.status===503&&error.code==='DOCUMENT_UPLOADS_NOT_CONFIGURED';
+  await assert.rejects(createIntent(db,'actor','project','case',{},env),unavailable);
+  await assert.rejects(upload(db,'actor','project','case','document',new Request('https://app.example',{method:'PUT',body:bytes}),env),unavailable);
+  await assert.rejects(rescan(db,'actor','project','case','document',env),unavailable);
+ }
+});
 test('upload contracts reject executable types, path filenames, oversized files and ambiguous dependants',()=>{
  const input={kind:'APPLICANT_ID',filename:'synthetic.pdf',contentType:'application/pdf',size:bytes.length,sha256:'a'.repeat(64),dependantOrdinal:null};
  assert.equal(uploadSchema.safeParse(input).success,true);

@@ -5,7 +5,7 @@ import { encryptForm, decryptForm } from './crypto';
 import { formSchema, blankForm, dohsSections, type Evidence, type DepartmentReview } from './contracts';
 import { evaluate } from './rules';
 import { HttpError } from './http';
-import { createIntent, upload, rescan, review, listEvidence, download, type EvidenceEnv } from './evidence';
+import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured, type EvidenceEnv } from './evidence';
 import {exportSnapshot} from './export-snapshot';
 
 export interface Env extends EvidenceEnv {
@@ -62,7 +62,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if(evidenceRoute){
       const project=z.uuid().parse(evidenceRoute[1]),application=z.uuid().parse(evidenceRoute[2]);
       const id=evidenceRoute[3]?z.uuid().parse(evidenceRoute[3]):undefined,action=evidenceRoute[4];
-      if(!id&&request.method==='GET')return json({evidence:await listEvidence(db,actor,project,application)});
+      if(!id&&request.method==='GET')return json({evidence:await listEvidence(db,actor,project,application),uploads:{enabled:uploadsConfigured(env)}});
       if(!id&&request.method==='POST')return json(await createIntent(db,actor,project,application,await body(request),env),201);
       if(id&&action==='upload'&&request.method==='PUT')return json(await upload(db,actor,project,application,id,request,env));
       if(id&&action==='scan'&&request.method==='POST')return json(await rescan(db,actor,project,application,id,env));

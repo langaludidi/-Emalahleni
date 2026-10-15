@@ -17,7 +17,8 @@ export function validSignature(bytes:Uint8Array,type:string){
  return false;
 }
 async function roleCheck(db:Database,actor:string,project:string,roles:string){const [rows]=await db.forActor(actor,[{query:`SELECT 1 FROM public.project_memberships m WHERE m.project_id=$1 AND m.user_id=$2 AND m.active AND ${roles}`,params:[project,actor]}]);if(!rows.length)throw new HttpError(403,'EVIDENCE_ACTION_DENIED');}
-function requireUploads(env:EvidenceEnv){if(env.ENABLE_DOCUMENT_UPLOADS!=='true'||!env.EVIDENCE_BUCKET||!env.SCANNER||!env.SCANNER_TOKEN)throw new HttpError(503,'DOCUMENT_UPLOADS_NOT_CONFIGURED');}
+export function uploadsConfigured(env:EvidenceEnv){return env.ENABLE_DOCUMENT_UPLOADS==='true'&&!!env.EVIDENCE_BUCKET&&!!env.SCANNER&&!!env.SCANNER_TOKEN;}
+function requireUploads(env:EvidenceEnv){if(!uploadsConfigured(env))throw new HttpError(503,'DOCUMENT_UPLOADS_NOT_CONFIGURED');}
 export async function createIntent(db:Database,actor:string,project:string,application:string,input:unknown,env:EvidenceEnv){
  requireUploads(env);const v=uploadSchema.parse(input);await roleCheck(db,actor,project,writer);
  const id=crypto.randomUUID();const key=`quarantine/${project}/${application}/${id}`;

@@ -2,7 +2,7 @@
 import base64, json, os, subprocess, time, shutil
 from pathlib import Path
 from urllib.request import urlopen
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 root = Path(__file__).resolve().parents[1]
 review = root / 'review'
@@ -202,14 +202,33 @@ try:
             stored_cases = {}
             writes = []
             fail_save = {'value':False}
+            upload_state = {'enabled':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
+            evidence_documents, upload_intents, uploaded_bytes = [], [], []
             def case_response(route):
                 method = route.request.method
                 suffix = route.request.url.split('/applications', 1)[1].split('?', 1)[0].strip('/')
                 status = 200
-                if suffix.endswith('/evidence'):
-                    result = {'evidence':[]}
+                if suffix.endswith('/evidence') and method == 'GET':
+                    if upload_state['fail_register']:
+                        status, result = 503, {'error':'TEST_REGISTER_UNAVAILABLE'}
+                    else:
+                        result = {'evidence':evidence_documents}
+                        if upload_state['enabled'] is not None:
+                            result['uploads'] = {'enabled':upload_state['enabled']}
+                elif suffix.endswith('/evidence') and method == 'POST':
+                    upload_intents.append(route.request.post_data_json)
+                    if upload_state['fail_intent']:
+                        status, result = 503, {'error':'DOCUMENT_UPLOADS_NOT_CONFIGURED'}
+                    else:
+                        result = {'id':'synthetic-document','uploadPath':'/api/projects/synthetic-project/applications/synthetic-case-1/evidence/synthetic-document/upload'}
+                elif suffix.endswith('/evidence/synthetic-document/upload') and method == 'PUT':
+                    uploaded_bytes.append(route.request.post_data_buffer)
+                    evidence_documents.append({'id':'synthetic-document','kind':'APPLICANT_ID','filename':'synthetic-id.pdf','status':'PENDING_REVIEW','malware_status':'CLEAN','reviewed_by':None,'document_date':None,'document_subtype':None})
+                    result = {'id':'synthetic-document','status':'PENDING_REVIEW','malware_status':'CLEAN'}
+                    if upload_state['fail_refresh_after_upload']:
+                        upload_state['fail_register'] = True
                 elif suffix.endswith('/dohs'):
-                    result = {'reviews':[]}
+                    status, result = (503, {'error':'TEST_DEPARTMENT_UNAVAILABLE'}) if upload_state['fail_department'] else (200, {'reviews':[]})
                 elif method == 'GET' and not suffix:
                     result = {'applications':[{key:item[key] for key in ['id','reference','version','workflow_status']} for item in stored_cases.values()]}
                 elif method == 'POST' and not suffix:
@@ -295,6 +314,58 @@ try:
             page.get_by_label('Existing draft').select_option('synthetic-case-1')
             page.get_by_label('Surname', exact=True).wait_for()
             assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
+            # Evidence capability comes from the server, not the officer role or file chooser.
+            steps.nth(3).click()
+            uploader = page.get_by_role('group', name='Upload evidence', exact=True)
+            picker = uploader.locator('input[type=file]')
+            upload_button = uploader.get_by_role('button', name='Upload and scan', exact=True)
+            refresh_evidence = page.get_by_role('button', name='Refresh evidence and reviews', exact=True)
+            uploader.get_by_text('Document uploads are unavailable', exact=True).wait_for()
+            assert picker.is_disabled() and upload_button.is_disabled()
+            assert upload_intents == [] and uploaded_bytes == []
+            page.screenshot(path=str(review / (label + '-uploads-unavailable.png')), full_page=True)
+            # Unknown configuration and failed reads never masquerade as a successful empty list.
+            upload_state['enabled'] = None
+            refresh_evidence.click()
+            uploader.get_by_text('Upload availability could not be confirmed', exact=True).wait_for()
+            assert picker.is_disabled()
+            upload_state['fail_register'] = True
+            refresh_evidence.click()
+            page.get_by_text('Unable to load recorded evidence. Refresh to check whether a document is saved.', exact=True).wait_for()
+            assert not page.get_by_text('No documents recorded for this case.', exact=True).is_visible()
+            assert picker.is_disabled()
+            upload_state.update(enabled=True, fail_register=False, fail_department=True)
+            refresh_evidence.click()
+            page.get_by_text('Unable to load departmental reviews. Refresh before recording a decision.', exact=True).wait_for()
+            picker.wait_for(state='visible')
+            assert picker.is_enabled()  # Independent departmental failure cannot hide evidence capability.
+            synthetic_pdf = b'%PDF-1.4\nSynthetic browser fixture only'
+            picker.set_input_files({'name':'synthetic-id.pdf','mimeType':'application/pdf','buffer':synthetic_pdf})
+            uploader.get_by_text('Selected: synthetic-id.pdf. Not uploaded yet. Press Upload and scan to add it to the case.', exact=True).wait_for()
+            assert upload_intents == [] and evidence_documents == []
+            # A configuration change between selection and submission is reported next to the button.
+            upload_state['fail_intent'] = True
+            upload_button.click()
+            expect(uploader.get_by_role('alert')).to_have_text('Upload blocked. Document uploads are unavailable until the scanning service is connected. This file has not been uploaded.')
+            assert picker.is_disabled() and uploaded_bytes == [] and evidence_documents == []
+            upload_state.update(fail_intent=False, fail_department=False, fail_refresh_after_upload=True)
+            refresh_evidence.click()
+            picker.wait_for(state='visible')
+            expect(picker).to_be_enabled()
+            # The acknowledgement remains successful if the following register refresh fails.
+            upload_button.click()
+            uploader.get_by_text('Uploaded and scanned. Assessor review is still required. The register could not refresh. Use Refresh evidence and reviews to check the saved document.', exact=True).wait_for()
+            assert uploaded_bytes == [synthetic_pdf]
+            assert picker.input_value() == '' and upload_button.is_disabled()
+            assert not uploader.get_by_role('alert').is_visible()
+            upload_state['fail_register'] = False
+            refresh_evidence.click()
+            page.locator('.evidence-register').get_by_text('synthetic-id.pdf', exact=True).wait_for()
+            assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
+            assert not page.get_by_text('No documents recorded for this case.', exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-evidence-upload-status.png')), full_page=True)
+            steps.nth(0).click()
             page.get_by_label('Surname', exact=True).fill('Discarded change')
             page.once('dialog', lambda dialog: dialog.accept())
             page.get_by_role('button', name='New form', exact=True).click()
@@ -318,7 +389,7 @@ try:
             assert page.get_by_label('Password', exact=True).input_value() == ''
             assert not errors, errors
             page.close()
-            print(label + ': preview/PDF, mocked Auth, Home/resume, blank new forms, separate draft creation, failed-save recovery, saved-draft reopening, guarded logout and no overflow/script errors passed.', flush=True)
+            print(label + ': preview/PDF, mocked Auth, capture/navigation, evidence availability and loading failures, selected versus uploaded files, nearby upload errors, acknowledged-upload refresh recovery and no overflow/script errors passed.', flush=True)
         browser.close()
 finally:
     server.terminate()
