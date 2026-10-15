@@ -56,7 +56,7 @@ export default function Page() {
     const objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=`${data.reference}-${pack?'draft-pack':'verification-summary'}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setStatus(pack?'Draft pack generated from verified, clean evidence. Submission remains unapproved.':'Verification summary generated.');
   }
   async function loadProjects() { const result=await api('/api/projects');setProjects(result.projects);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
-  useEffect(()=> { let live=true; auth.getSession().then(async result=>{if(live && result.data?.user){setUser(result.data.user.name || result.data.user.email);}}).catch(()=>{});return()=>{live=false}; },[auth]);
+  useEffect(()=> { let live=true; auth.getSession().then(async result=>{if(live && result.data?.user){setUser(result.data.user.name || result.data.user.email);setMode('connected');await run(loadProjects);}}).catch(()=>{});return()=>{live=false}; },[auth]);
   function showVerification() { setVerificationNeeded(true);setVerificationSent(false);setVerificationCode('');setStatus('Verify your email before signing in. Request a code below.'); }
   async function signIn() {
     try {
@@ -65,6 +65,11 @@ export default function Page() {
       setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setUser(result.data?.user.name || email);await loadProjects();
     } catch(error) { if(needsEmailVerification(error)){showVerification();return;}throw error; }
     finally { setPassword(''); }
+  }
+  async function signOut() {
+    const result=await auth.signOut();if(result.error)throw new Error(result.error.message || 'Unable to sign out. Please try again.');
+    setUser('');setPassword('');setRecovering(false);clearRecovery();setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
+    setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');
   }
   async function sendVerification() {
     const result=await auth.emailOtp.sendVerificationOtp({email,type:'email-verification'});
@@ -107,10 +112,10 @@ export default function Page() {
   }
   const editable = mode==='preview' || ['ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER'].includes(projects.find(p=>p.id===project)?.role ?? '');
   return <main>
-    <header><div className="brand"><span className="brand-mark">E</span><div><strong>EMALAHLENI</strong><small>Beneficiary assurance</small></div></div><span className="pill">Development workspace</span></header>
+    <header><div className="brand"><span className="brand-mark">E</span><div><strong>EMALAHLENI</strong><small>Beneficiary assurance</small></div></div>{user?<details className="account-menu"><summary>Account</summary><div className="account-actions"><span>Signed in as {user}</span><button className="secondary" disabled={busy} onClick={()=>run(loadProjects)}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(signOut)}>Sign out</button></div></details>:<span className="pill">Development workspace</span>}</header>
     <section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>
     <section className="connection" aria-label="Workspace connection"><div className="mode"><button className={mode==='preview'?'selected':''} onClick={()=>{setMode('preview');setActive(null);setProject('');setForm(blankForm());setReadiness(null);setStatus('Preview mode · changes stay in this tab.');}}>Preview form</button><button className={mode==='connected'?'selected':''} onClick={()=>{if(mode!=='connected'){setMode('connected');setActive(null);setProject('');setCases([]);setForm(blankForm());setReadiness(null);}if(user)run(loadProjects);}}>Connected workspace</button></div>
-      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:<div className="login">{!user?<><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>{!recovering&&<><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>}<button className="secondary" disabled={busy} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button></>:<><span>Signed in as {user}</span><button className="secondary" onClick={()=>run(loadProjects)} disabled={busy}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(async()=>{await auth.signOut();setUser('');setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');})}>Sign out</button></>}</div>}
+      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:!user&&<div className="login"><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>{!recovering&&<><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>}<button className="secondary" disabled={busy} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button></div>}
       {mode==='connected'&&!user&&<p className="hint" role="status">{busy?'Working…':status}</p>}
       {mode==='connected'&&!user&&recovering&&<fieldset aria-label="Password recovery" disabled={busy}>
         <h3>Reset your password</h3><p>Request an emailed code for {email||'your account'}. You do not need your current password.</p>

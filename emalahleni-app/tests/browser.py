@@ -137,8 +137,51 @@ try:
             page.get_by_label('New password', exact=True).fill('discard-this-synthetic-password')
             page.get_by_role('button', name='Back to sign in', exact=True).click()
             assert page.get_by_label('Password', exact=True).input_value() == ''
+            # Authenticated layout uses a compact account menu, including after reload.
+            signed_in = {'value':False}
+            auth_user = {'id':'synthetic-user','name':'Synthetic Officer','email':'synthetic@emalahleni.invalid','emailVerified':True,'createdAt':'2026-10-01T00:00:00Z','updatedAt':'2026-10-01T00:00:00Z'}
+            auth_session = {'id':'synthetic-session','userId':'synthetic-user','token':'synthetic-session-token','expiresAt':'2099-01-01T00:00:00Z','createdAt':'2026-10-01T00:00:00Z','updatedAt':'2026-10-01T00:00:00Z'}
+            def successful_sign_in(route):
+                signed_in['value'] = True
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'token':'synthetic-session-token','user':auth_user,'session':auth_session}))
+            def session_response(route):
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'session':auth_session,'user':auth_user} if signed_in['value'] else None))
+            def successful_sign_out(route):
+                signed_in['value'] = False
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True}))
+            page.route('**/sign-in/email', successful_sign_in)
+            page.route('**/get-session*', session_response)
+            page.route('**/sign-out', successful_sign_out)
+            page.route('**/token', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'token':'synthetic-browser-only-token'})))
+            page.route('**/api/projects', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]})))
+            page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
+            page.get_by_role('button', name='Sign in', exact=True).click()
+            page.get_by_label('Project', exact=True).wait_for()
+            page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            assert not page.get_by_label('Email', exact=True).is_visible()
+            assert not page.get_by_label('Password', exact=True).is_visible()
+            assert not page.get_by_role('button', name='Forgot password', exact=True).is_visible()
+            assert not page.get_by_role('button', name='Sign in', exact=True).is_visible()
+            assert not page.get_by_role('button', name='Sign out', exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-signed-in.png')), full_page=True)
+            page.reload(wait_until='domcontentloaded')
+            page.get_by_label('Project', exact=True).wait_for()
+            page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').wait_for(state='attached')
+            assert page.get_by_label('Project', exact=True).locator('option', has_text='Synthetic staging').count() == 1
+            assert not page.get_by_label('Email', exact=True).is_visible()
+            page.locator('summary', has_text='Account').click()
+            assert page.get_by_text('Signed in as Synthetic Officer', exact=True).is_visible()
+            assert page.get_by_role('button', name='Sign out', exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.get_by_role('button', name='Sign out', exact=True).click()
+            page.get_by_label('Email', exact=True).wait_for()
+            assert page.get_by_role('button', name='Forgot password', exact=True).is_visible()
+            assert not page.get_by_label('Project', exact=True).is_visible()
+            assert page.get_by_label('Password', exact=True).input_value() == ''
+            assert not errors, errors
             page.close()
-            print(label + ': four-step workflow, conditional evidence, Worker readiness, PDF, no overflow/script errors, mocked email verification and password recovery passed.', flush=True)
+            print(label + ': preview, PDF, mocked email verification/password recovery, compact signed-in view, restored session, sign-out and no overflow/script errors passed.', flush=True)
         browser.close()
 finally:
     server.terminate()
