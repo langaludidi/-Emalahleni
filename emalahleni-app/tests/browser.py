@@ -66,6 +66,15 @@ try:
             page.route('**/sign-in/email', lambda route: route.fulfill(status=403, content_type='application/json', body=json.dumps({'code':'EMAIL_NOT_VERIFIED','message':'Email not verified'})))
             page.route('**/email-otp/send-verification-otp', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True})))
             page.route('**/email-otp/verify-email', lambda route: route.fulfill(status=200, content_type='application/json', body=json.dumps({'status':True})))
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.get_by_role('heading', name='Applications', exact=True).wait_for()
+            assert not page.get_by_label('First names', exact=True).is_visible()
+            page.get_by_role('button', name='Resume form', exact=True).click()
+            assert page.get_by_role('heading', name='Documents & readiness', exact=True).is_visible()
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='Connected workspace', exact=True).click()
+            assert page.get_by_role('heading', name='Documents & readiness', exact=True).is_visible()
+            page.once('dialog', lambda dialog: dialog.accept())
             page.get_by_role('button', name='Connected workspace', exact=True).click()
             page.get_by_label('Email', exact=True).fill('synthetic@emalahleni.invalid')
             page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
@@ -188,14 +197,128 @@ try:
             assert page.get_by_text('Signed in as Synthetic Officer', exact=True).is_visible()
             assert page.get_by_role('button', name='Sign out', exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
-            page.get_by_role('button', name='Sign out', exact=True).click()
+            page.locator('summary', has_text='Account').click()
+            # A stateful API double proves new captures never update the previous draft.
+            stored_cases = {}
+            writes = []
+            fail_save = {'value':False}
+            def case_response(route):
+                method = route.request.method
+                suffix = route.request.url.split('/applications', 1)[1].split('?', 1)[0].strip('/')
+                status = 200
+                if suffix.endswith('/evidence'):
+                    result = {'evidence':[]}
+                elif suffix.endswith('/dohs'):
+                    result = {'reviews':[]}
+                elif method == 'GET' and not suffix:
+                    result = {'applications':[{key:item[key] for key in ['id','reference','version','workflow_status']} for item in stored_cases.values()]}
+                elif method == 'POST' and not suffix:
+                    body = route.request.post_data_json
+                    case_id = 'synthetic-case-' + str(len(stored_cases)+1)
+                    result = {'id':case_id,'reference':body['reference'],'version':0,'workflow_status':'DRAFT','form':body['form']}
+                    stored_cases[case_id] = result
+                    writes.append(('POST',case_id))
+                elif method == 'PUT' and suffix in stored_cases:
+                    if fail_save['value']:
+                        fail_save['value'] = False
+                        status, result = 503, {'error':'TEST_SAVE_FAILED'}
+                    else:
+                        body = route.request.post_data_json
+                        assert body['version'] == stored_cases[suffix]['version']
+                        result = {**stored_cases[suffix],'version':body['version']+1,'form':body['form']}
+                        stored_cases[suffix] = result
+                        writes.append(('PUT',suffix))
+                elif method == 'GET' and suffix in stored_cases:
+                    result = stored_cases[suffix]
+                else:
+                    status, result = 404, {'error':'NOT_FOUND'}
+                route.fulfill(status=status, content_type='application/json', body=json.dumps(result))
+            page.route('**/api/projects/synthetic-project/applications**', case_response)
+            page.get_by_label('Project').select_option('synthetic-project')
+            page.get_by_role('button', name='New form', exact=True).click()
+            page.get_by_label('Synthetic case reference', exact=True).fill('SYN-NAV-001')
+            page.get_by_label('First names', exact=True).fill('Synthetic')
+            page.get_by_label('Surname', exact=True).fill('Original')
+            steps = page.get_by_role('navigation', name='Verification steps').get_by_role('button')
+            steps.nth(1).click()
+            page.get_by_label('Declared income source').select_option('UNEMPLOYED')
+            page.get_by_role('button', name='+ Add dependant').click()
+            page.get_by_label('Dependant 1 name').fill('Synthetic Child')
+            steps.nth(2).click()
+            page.get_by_label('House type', exact=True).fill('Synthetic structure')
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='New form', exact=True).click()
+            assert page.get_by_role('button', name='Resume form', exact=True).is_visible()
+            page.get_by_role('button', name='Resume form', exact=True).click()
+            assert page.get_by_label('House type', exact=True).input_value() == 'Synthetic structure'
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft saved · version 0', exact=True).wait_for()
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.get_by_role('button', name='New form', exact=True).click()
+            page.get_by_role('heading', name='Applicant', exact=True).wait_for()
+            assert page.get_by_label('First names', exact=True).input_value() == ''
+            assert page.get_by_label('Surname', exact=True).input_value() == ''
+            assert page.get_by_label('Synthetic case reference', exact=True).input_value() == 'SYN-'
+            steps.nth(1).click()
+            assert page.get_by_label('Declared income source').input_value() == ''
+            assert not page.get_by_label('Dependant 1 name').is_visible()
+            steps.nth(2).click()
+            assert page.get_by_label('House type', exact=True).input_value() == ''
+            steps.nth(0).click()
+            page.get_by_label('Synthetic case reference', exact=True).fill('SYN-NAV-002')
+            page.get_by_label('First names', exact=True).fill('Synthetic')
+            page.get_by_label('Surname', exact=True).fill('Second')
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft saved · version 0', exact=True).wait_for()
+            assert writes == [('POST','synthetic-case-1'),('POST','synthetic-case-2')]
+            assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Original'
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.get_by_label('Existing draft').select_option('synthetic-case-1')
+            page.get_by_label('Surname', exact=True).wait_for()
+            assert page.get_by_label('Surname', exact=True).input_value() == 'Original'
+            page.get_by_label('Surname', exact=True).fill('Changed')
+            fail_save['value'] = True
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('TEST_SAVE_FAILED', exact=True).wait_for()
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='New form', exact=True).click()
+            page.get_by_role('button', name='Resume form', exact=True).click()
+            assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft saved · version 1', exact=True).wait_for()
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.reload(wait_until='domcontentloaded')
+            wait_for_project()
+            page.get_by_label('Project').select_option('synthetic-project')
+            page.get_by_label('Existing draft').select_option('synthetic-case-1')
+            page.get_by_label('Surname', exact=True).wait_for()
+            assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
+            page.get_by_label('Surname', exact=True).fill('Discarded change')
+            page.once('dialog', lambda dialog: dialog.accept())
+            page.get_by_role('button', name='New form', exact=True).click()
+            assert page.get_by_label('Surname', exact=True).input_value() == ''
+            assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Changed'
+            page.get_by_label('First names', exact=True).fill('Unsaved temporary capture')
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='Log out', exact=True).click()
+            assert signed_in['value']
+            assert page.get_by_label('First names', exact=True).input_value() == 'Unsaved temporary capture'
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-capture-navigation.png')), full_page=True)
+            page.once('dialog', lambda dialog: dialog.accept())
+            page.get_by_role('button', name='Log out', exact=True).click()
             page.get_by_label('Email', exact=True).wait_for()
             assert page.get_by_role('button', name='Forgot password', exact=True).is_visible()
             assert not page.get_by_label('Project').is_visible()
+            assert not page.get_by_role('button', name='Resume form', exact=True).is_visible()
+            assert not page.get_by_label('First names', exact=True).is_visible()
+            assert not signed_in['value']
             assert page.get_by_label('Password', exact=True).input_value() == ''
             assert not errors, errors
             page.close()
-            print(label + ': preview, PDF, mocked email verification/password recovery, compact signed-in view, restored session, sign-out and no overflow/script errors passed.', flush=True)
+            print(label + ': preview/PDF, mocked Auth, Home/resume, blank new forms, separate draft creation, failed-save recovery, saved-draft reopening, guarded logout and no overflow/script errors passed.', flush=True)
         browser.close()
 finally:
     server.terminate()

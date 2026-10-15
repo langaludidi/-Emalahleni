@@ -18,6 +18,10 @@ npm run dev
 
 Open http://localhost:8787. The preview form works without credentials. Preview entries stay in memory and disappear when the tab closes. The frontend is a static Next.js export; the API runs in the Cloudflare Worker on the same origin.
 
+## Capture navigation
+
+The capture toolbar provides **Home**, **New form**, **Save draft** for connected captures, and **Log out** when signed in. Home keeps the current form in this tab and offers **Resume form**; it does not save automatically. New form clears all capture sections, the case reference and the active draft while retaining the selected project and its saved drafts. Starting over, changing project/workspace, opening another draft or logging out requires confirmation when the current form has unsaved changes. Save successfully before leaving if those changes must be retained. Saved drafts can be reopened from the home workspace.
+
 ## Deployment
 
 The existing `emalahleni-api-staging` Worker is deployed at https://emalahleni-api-staging.ludidil.workers.dev. Cloudflare Workers Builds connects this repository's `main` branch with root directory `emalahleni-app`, build command `npm run build` and deploy command `npm run deploy`. `.node-version` selects Node.js 24. `wrangler.jsonc` retains the Worker and private `emalahleni-evidence-staging` R2 bucket names.
