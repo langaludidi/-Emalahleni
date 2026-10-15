@@ -26,6 +26,8 @@ export default function Page() {
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('');
   const [verificationNeeded,setVerificationNeeded] = useState(false);
   const [verificationSent,setVerificationSent] = useState(false); const [verificationCode,setVerificationCode] = useState('');
+  const [recovering,setRecovering] = useState(false); const [resetSent,setResetSent] = useState(false);
+  const [resetCode,setResetCode] = useState(''); const [newPassword,setNewPassword] = useState(''); const [confirmPassword,setConfirmPassword] = useState('');
   const [projects,setProjects] = useState<Project[]>([]); const [project,setProject] = useState('');
   const [cases,setCases] = useState<Case[]>([]); const [active,setActive] = useState<Case|null>(null);
   const [reference,setReference] = useState('SYN-'); const [status,setStatus] = useState('Preview mode · changes stay in this tab.');
@@ -74,6 +76,27 @@ export default function Page() {
     if(result.error)throw new Error(result.error.message || 'The verification code is invalid or expired.');
     setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setStatus('Email verified. Enter your password and sign in.');
   }
+  function clearRecovery() { setResetSent(false);setResetCode('');setNewPassword('');setConfirmPassword(''); }
+  function changeEmail(value:string) {
+    setEmail(value);setPassword('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
+    setStatus(recovering?'Request a reset code for this email address.':'Enter your email and password to sign in.');
+  }
+  function toggleRecovery(value:boolean) {
+    setRecovering(value);setPassword('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
+    setStatus(value?'Request a reset code, then choose your own password.':'Enter your email and password to sign in.');
+  }
+  async function sendResetCode() {
+    setResetCode('');
+    const result=await auth.emailOtp.sendVerificationOtp({email:email.trim(),type:'forget-password'});
+    if(result.error)throw new Error(result.error.message || 'Unable to request a reset code. Please try again.');
+    setResetSent(true);setStatus('If this email has an account, a reset code has been sent. Check your inbox and spam folder.');
+  }
+  async function resetPassword() {
+    if(resetCode.length!==6 || newPassword.length<8 || newPassword.length>128 || newPassword!==confirmPassword)throw new Error('Enter the six-digit code and matching passwords of 8 to 128 characters.');
+    const result=await auth.emailOtp.resetPassword({email:email.trim(),otp:resetCode,password:newPassword});
+    if(result.error)throw new Error(result.error.message || 'The reset code is invalid or expired. Request a new code and try again.');
+    setRecovering(false);clearRecovery();setPassword('');setStatus('Password updated. Enter your new password and sign in.');
+  }
   async function selectProject(id:string) { setCases([]);setProject(id);setActive(null);setForm(blankForm());setReadiness(null);if(!id)return;const result=await api(`/api/projects/${id}/applications`);setCases(result.applications); }
   async function loadCase(id:string) { const result=await api(`/api/projects/${project}/applications/${id}`);setActive(result);setForm(result.form);setReference(result.reference);setReadiness(null);setStatus(`Loaded ${result.reference} · version ${result.version}`); }
   async function save() { if(!project)throw new Error('Choose a project first.');const root=`/api/projects/${project}/applications`;const result=active?await api(`${root}/${active.id}`,'PUT',{version:active.version,form}):await api(root,'POST',{reference,form});setActive({...result,workflow_status:'DRAFT'});setStatus(`Draft saved · version ${result.version}`);const list=await api(root);setCases(list.applications); }
@@ -87,8 +110,19 @@ export default function Page() {
     <header><div className="brand"><span className="brand-mark">E</span><div><strong>EMALAHLENI</strong><small>Beneficiary assurance</small></div></div><span className="pill">Development workspace</span></header>
     <section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>
     <section className="connection" aria-label="Workspace connection"><div className="mode"><button className={mode==='preview'?'selected':''} onClick={()=>{setMode('preview');setActive(null);setProject('');setForm(blankForm());setReadiness(null);setStatus('Preview mode · changes stay in this tab.');}}>Preview form</button><button className={mode==='connected'?'selected':''} onClick={()=>{if(mode!=='connected'){setMode('connected');setActive(null);setProject('');setCases([]);setForm(blankForm());setReadiness(null);}if(user)run(loadProjects);}}>Connected workspace</button></div>
-      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:<div className="login">{!user?<><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>{setEmail(e.target.value);setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');}}/></Field><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>:<><span>Signed in as {user}</span><button className="secondary" onClick={()=>run(loadProjects)} disabled={busy}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(async()=>{await auth.signOut();setUser('');setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');})}>Sign out</button></>}</div>}
+      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:<div className="login">{!user?<><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>{!recovering&&<><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>}<button className="secondary" disabled={busy} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button></>:<><span>Signed in as {user}</span><button className="secondary" onClick={()=>run(loadProjects)} disabled={busy}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(async()=>{await auth.signOut();setUser('');setProjects([]);setCases([]);setProject('');setActive(null);setForm(blankForm());setReadiness(null);setStatus('Signed out.');})}>Sign out</button></>}</div>}
       {mode==='connected'&&!user&&<p className="hint" role="status">{busy?'Working…':status}</p>}
+      {mode==='connected'&&!user&&recovering&&<fieldset aria-label="Password recovery" disabled={busy}>
+        <h3>Reset your password</h3><p>Request an emailed code for {email||'your account'}. You do not need your current password.</p>
+        <button className="secondary" disabled={!email.trim()} onClick={()=>run(sendResetCode)}>{resetSent?'Send a new reset code':'Send reset code'}</button>
+        {resetSent&&<><div className="grid">
+          <Field label="Password reset code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode} onChange={e=>setResetCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field>
+          <Field label="New password"><input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></Field>
+          <Field label="Confirm new password"><input type="password" autoComplete="new-password" minLength={8} maxLength={128} value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></Field>
+        </div><p className="hint">Use 8 to 128 characters. Enter the same new password twice.</p>
+        {confirmPassword&&newPassword!==confirmPassword&&<p className="hint">The new passwords do not match.</p>}
+        <button disabled={resetCode.length!==6||newPassword.length<8||newPassword.length>128||newPassword!==confirmPassword} onClick={()=>run(resetPassword)}>Set new password</button></>}
+      </fieldset>}
       {mode==='connected'&&!user&&verificationNeeded&&<fieldset aria-label="Email verification" disabled={busy}><h3>Verify your email</h3><p>Request a code for {email}, then enter it here.</p><button className="secondary" disabled={!email} onClick={()=>run(sendVerification)}>{verificationSent?'Send a new verification code':'Send verification code'}</button>{verificationSent&&<><Field label="Email verification code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={verificationCode} onChange={e=>setVerificationCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field><button disabled={verificationCode.length!==6} onClick={()=>run(verifyEmail)}>Verify email</button></>}</fieldset>}
       {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select value={project} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select value={active?.id??''} disabled={!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):(setActive(null),setForm(blankForm()),setReference('SYN-'),setReadiness(null))}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field><Field label="Synthetic case reference"><input value={reference} disabled={!!active} onChange={e=>setReference(e.target.value.toUpperCase())}/></Field></div>}
     </section>

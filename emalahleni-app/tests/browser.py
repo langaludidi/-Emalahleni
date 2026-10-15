@@ -80,8 +80,65 @@ try:
             assert not page.get_by_role('heading', name='Verify your email', exact=True).is_visible()
             assert not errors, errors
             page.screenshot(path=str(review / (label + '-email-verification.png')), full_page=True)
+            reset_requests = []
+            sent_types = []
+            def send_code(route):
+                sent_types.append(route.request.post_data_json['type'])
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True}))
+            def reset_password(route):
+                body = route.request.post_data_json
+                reset_requests.append(body)
+                accepted = body['otp'] == '654321'
+                route.fulfill(status=200 if accepted else 400, content_type='application/json', body=json.dumps({'success':True} if accepted else {'code':'INVALID_OTP','message':'The reset code is invalid or expired.'}))
+            page.route('**/email-otp/send-verification-otp', send_code)
+            page.route('**/email-otp/reset-password', reset_password)
+            page.get_by_role('button', name='Forgot password', exact=True).click()
+            page.get_by_role('heading', name='Reset your password', exact=True).wait_for()
+            assert sent_types == []  # Opening recovery must not send an email.
+            assert not page.get_by_label('Password', exact=True).is_visible()
+            page.get_by_role('button', name='Send reset code', exact=True).click()
+            page.get_by_label('Password reset code', exact=True).wait_for()
+            assert sent_types == ['forget-password']
+            page.get_by_label('Password reset code', exact=True).fill('111111')
+            page.get_by_label('New password', exact=True).fill('synthetic-new-password')
+            page.get_by_label('Confirm new password', exact=True).fill('does-not-match')
+            assert page.get_by_role('button', name='Set new password', exact=True).is_disabled()
+            assert reset_requests == []
+            page.get_by_label('Confirm new password', exact=True).fill('synthetic-new-password')
+            page.get_by_role('button', name='Set new password', exact=True).click()
+            page.get_by_text('The reset code is invalid or expired.', exact=True).first.wait_for()
+            assert page.get_by_role('heading', name='Reset your password', exact=True).is_visible()
+            page.get_by_label('Password reset code', exact=True).fill('654321')
+            page.get_by_role('button', name='Set new password', exact=True).click()
+            page.get_by_text('Password updated. Enter your new password and sign in.', exact=True).first.wait_for()
+            assert not page.get_by_role('heading', name='Reset your password', exact=True).is_visible()
+            assert page.get_by_label('Password', exact=True).input_value() == ''
+            assert len(reset_requests) == 2
+            assert reset_requests[-1] == {'email':'synthetic@emalahleni.invalid','otp':'654321','password':'synthetic-new-password'}
+            # Opening again clears recovery secrets; changing email invalidates its code.
+            page.get_by_role('button', name='Forgot password', exact=True).click()
+            page.get_by_role('button', name='Send reset code', exact=True).click()
+            page.get_by_label('Password reset code', exact=True).wait_for()
+            assert page.get_by_label('Password reset code', exact=True).input_value() == ''
+            assert page.get_by_label('New password', exact=True).input_value() == ''
+            assert page.get_by_label('Confirm new password', exact=True).input_value() == ''
+            page.get_by_label('Password reset code', exact=True).fill('654321')
+            page.get_by_label('Email', exact=True).fill('another-synthetic@emalahleni.invalid')
+            assert not page.get_by_label('Password reset code', exact=True).is_visible()
+            assert page.get_by_role('button', name='Send reset code', exact=True).is_visible()
+            page.get_by_label('Email', exact=True).fill('synthetic@emalahleni.invalid')
+            page.get_by_role('button', name='Send reset code', exact=True).click()
+            page.get_by_label('Password reset code', exact=True).wait_for()
+            assert page.get_by_label('Password reset code', exact=True).input_value() == ''
+            assert page.get_by_label('New password', exact=True).input_value() == ''
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            assert not errors, errors
+            page.screenshot(path=str(review / (label + '-password-recovery.png')), full_page=True)
+            page.get_by_label('New password', exact=True).fill('discard-this-synthetic-password')
+            page.get_by_role('button', name='Back to sign in', exact=True).click()
+            assert page.get_by_label('Password', exact=True).input_value() == ''
             page.close()
-            print(label + ': four-step workflow, conditional evidence, Worker readiness response, no overflow no script errors and mocked email-verification recovery passed.', flush=True)
+            print(label + ': four-step workflow, conditional evidence, Worker readiness, PDF, no overflow/script errors, mocked email verification and password recovery passed.', flush=True)
         browser.close()
 finally:
     server.terminate()

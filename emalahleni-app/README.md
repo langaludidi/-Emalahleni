@@ -26,7 +26,7 @@ On 14 October 2026, the first connected Cloudflare build succeeded, the operator
 
 Configure `DATABASE_URL` as a Worker secret using the restricted `emalahleni_worker` account. Its prepared secret is outside this source package. Configure `FORM_ENCRYPTION_KEY` as a separate secret containing a base64-encoded 32-byte AES key. Preserve that key across deployments; losing it makes saved forms unreadable. Never include either secret in browser code or commit them.
 
-`ENABLE_CASE_API=true` enables the authenticated case API after configuration. Assign identities to project memberships administratively; signing in does not grant access. The Neon Auth issuer and JWKS are configured for the existing staging branch, and the Worker origin has been added to that branch's trusted domains. The staging sign-in screen now handles unverified-email errors, lets the user explicitly request an email verification code, and verifies that code through Neon Auth. Browser sign-in and session restoration still require live verification.
+`ENABLE_CASE_API=true` enables the authenticated case API after configuration. Assign identities to project memberships administratively; signing in does not grant access. The Neon Auth issuer and JWKS are configured for the existing staging branch, and the Worker origin has been added to that branch's trusted domains. The staging sign-in screen handles unverified-email errors, lets the user explicitly request an email verification code, and verifies that code through Neon Auth. **Forgot password** also lets the user request a password-reset code and choose a new password inside the app; no downloaded password file is needed. Reset codes and email-verification codes have separate purposes. Browser sign-in and session restoration still require live verification.
 
 ## Gate-two preparation
 
@@ -34,7 +34,7 @@ The staging database contains a labelled synthetic project and an encrypted draf
 
 The prepared Worker database credential authenticated as `emalahleni_worker`, with no superuser, role-creation or RLS-bypass privileges. Staging probes through the same restricted role passed project isolation, no project visibility for an unassigned identity, encrypted create/save, stale-version rejection, read-only auditor behavior using the API's writer predicate, and other-project/unassigned read/write denial. Probe audit metadata is labelled `GATE2_DATABASE_PROBE`. These are database probes, not HTTP requests authenticated by live JWTs; the browser sign-in, token verification, saved-case reload and sign-out journey remains pending.
 
-`wrangler.jsonc` enables the authenticated case API for the synthetic staging test while retaining `ENABLE_DOCUMENT_UPLOADS=false`. Local type checks and all 17 tests pass. The browser harness covers unverified-email recovery with mocked email-code endpoints; it does not prove real email delivery.
+`wrangler.jsonc` enables the authenticated case API for the synthetic staging test while retaining `ENABLE_DOCUMENT_UPLOADS=false`. Local type checks and all 17 tests pass. The browser harness covers email verification and password recovery with mocked endpoints, including incorrect codes, mismatched passwords, clearing recovery fields and changing email addresses. These checks do not prove real email delivery or a successful live password reset.
 
 ## Documents and scanner
 
