@@ -1,5 +1,5 @@
 export class HttpError extends Error { constructor(public status: number, public code: string) { super(code); } }
-export async function readBytes(request: Request, limit: number) {
+export async function readBytes(request: Request|Response, limit: number) {
   const reader=request.body?.getReader();if(!reader)throw new HttpError(400,'BODY_REQUIRED');
   const chunks:Uint8Array[]=[];let length=0;
   while(true){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>limit){await reader.cancel();throw new HttpError(413,'BODY_TOO_LARGE');}chunks.push(value);}

@@ -77,3 +77,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+
+## Private document processing runtime
+
+The scanner image installs Debian packages for ClamAV (GPL-2.0), Poppler (GPL-2.0-or-later), and Tesseract (Apache-2.0). Their installed package copyright and license files remain under `/usr/share/doc` in the image; Debian package metadata identifies the corresponding sources. The Cloudflare Containers SDK is dual-licensed MIT OR Apache-2.0: https://github.com/cloudflare/containers/tree/v0.3.7. These runtime dependencies do not supply an external AI service.

@@ -202,17 +202,27 @@ try:
             stored_cases = {}
             writes = []
             fail_save = {'value':False}
-            upload_state = {'enabled':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
+            upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
             evidence_documents, upload_intents, uploaded_bytes = [], [], []
+            id_reads = []
+            def valid_synthetic_id():
+                for check in range(10):
+                    candidate = '900101000008' + str(check)
+                    digits = [int(value) * (2 if index % 2 else 1) for index, value in enumerate(candidate)]
+                    if sum(value-9 if value>9 else value for value in digits) % 10 == 0:
+                        return candidate
+            synthetic_id = valid_synthetic_id()
             def case_response(route):
                 method = route.request.method
                 suffix = route.request.url.split('/applications', 1)[1].split('?', 1)[0].strip('/')
                 status = 200
-                if suffix.endswith('/evidence') and method == 'GET':
+                if suffix.endswith('/document-service-check') and method == 'POST':
+                    status, result = (200, {'status':'ready','checks':{'scannerHealth':True,'cleanScan':True,'idReading':True},'uploadsEnabled':False,'idReadingEnabled':False}) if upload_state['service_ready'] else (503, {'error':'DOCUMENT_SERVICE_NOT_CONFIGURED'})
+                elif suffix.endswith('/evidence') and method == 'GET':
                     if upload_state['fail_register']:
                         status, result = 503, {'error':'TEST_REGISTER_UNAVAILABLE'}
                     else:
-                        result = {'evidence':evidence_documents}
+                        result = {'evidence':evidence_documents,'idReading':{'enabled':upload_state['id_reading']}}
                         if upload_state['enabled'] is not None:
                             result['uploads'] = {'enabled':upload_state['enabled']}
                 elif suffix.endswith('/evidence') and method == 'POST':
@@ -227,6 +237,12 @@ try:
                     result = {'id':'synthetic-document','status':'PENDING_REVIEW','malware_status':'CLEAN'}
                     if upload_state['fail_refresh_after_upload']:
                         upload_state['fail_register'] = True
+                elif suffix.endswith('/evidence/synthetic-document/read-id') and method == 'POST':
+                    id_reads.append(suffix)
+                    if upload_state['fail_reading']:
+                        status, result = 503, {'error':'ID_READING_UNAVAILABLE'}
+                    else:
+                        result = {'evidenceId':'synthetic-document','sha256':'a'*64,'fields':{'firstNames':'READ SYNTHETIC','surname':'READ EXAMPLE','idNumber':synthetic_id},'dateOfBirth':'1990-01-01','warnings':['Check every proposed value against the original ID.'],'requiresConfirmation':True}
                 elif suffix.endswith('/dohs'):
                     status, result = (503, {'error':'TEST_DEPARTMENT_UNAVAILABLE'}) if upload_state['fail_department'] else (200, {'reviews':[]})
                 elif method == 'GET' and not suffix:
@@ -323,6 +339,12 @@ try:
             uploader.get_by_text('Document uploads are unavailable', exact=True).wait_for()
             assert picker.is_disabled() and upload_button.is_disabled()
             assert upload_intents == [] and uploaded_bytes == []
+            page.get_by_role('button', name='Check document service', exact=True).click()
+            page.get_by_text('The private document service is not connected yet.', exact=True).wait_for()
+            upload_state['service_ready'] = True
+            page.get_by_role('button', name='Check document service', exact=True).click()
+            page.get_by_text('The scanner and ID reader passed their synthetic checks. Uploads and ID reading are awaiting activation.', exact=True).wait_for()
+            assert picker.is_disabled() and upload_button.is_disabled()
             page.screenshot(path=str(review / (label + '-uploads-unavailable.png')), full_page=True)
             # Unknown configuration and failed reads never masquerade as a successful empty list.
             upload_state['enabled'] = None
@@ -365,6 +387,43 @@ try:
             assert not page.get_by_text('No documents recorded for this case.', exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             page.screenshot(path=str(review / (label + '-evidence-upload-status.png')), full_page=True)
+            reader = page.get_by_role('region', name='Applicant ID reading', exact=True)
+            read_button = reader.get_by_role('button', name='Read ID details', exact=True)
+            assert read_button.is_disabled() and id_reads == []
+            upload_state['id_reading'] = True
+            refresh_evidence.click()
+            expect(read_button).to_be_enabled()
+            upload_state['fail_reading'] = True
+            read_button.click()
+            expect(reader.get_by_role('alert')).to_have_text('Unable to read ID details. Try again when the service is ready, or enter the details manually.')
+            assert page.locator('aside .summary h3').inner_text() == 'Synthetic Changed'
+            upload_state['fail_reading'] = False
+            read_button.click()
+            proposal = reader.get_by_role('region', name='Review extracted ID details', exact=True)
+            proposal.get_by_role('heading', name='Review ID details', exact=True).wait_for()
+            assert page.locator('aside .summary h3').inner_text() == 'Synthetic Changed'
+            assert not proposal.get_by_label('Use first names from ID', exact=True).is_checked()
+            assert not proposal.get_by_label('Use surname from ID', exact=True).is_checked()
+            assert proposal.get_by_label('Use south african id number from ID', exact=True).is_checked()
+            apply_id = proposal.get_by_role('button', name='Apply selected ID details', exact=True)
+            assert apply_id.is_disabled()
+            proposal.get_by_label('First names read from ID', exact=True).fill('Corrected Synthetic')
+            proposal.get_by_label('Use first names from ID', exact=True).check()
+            assert apply_id.is_disabled()
+            proposal.get_by_label('I checked the selected details against the original applicant ID', exact=True).check()
+            expect(apply_id).to_be_enabled()
+            assert stored_cases['synthetic-case-1']['form']['applicant']['firstNames'] == 'Synthetic'
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-id-reading-confirmation.png')), full_page=True)
+            apply_id.click()
+            assert page.locator('aside .summary h3').inner_text() == 'Corrected Synthetic Changed'
+            assert not proposal.is_visible()
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft saved · version 2', exact=True).wait_for()
+            assert stored_cases['synthetic-case-1']['form']['applicant']['firstNames'] == 'Corrected Synthetic'
+            assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Changed'
+            assert stored_cases['synthetic-case-1']['form']['applicant']['idNumber'] == synthetic_id
+            assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
             steps.nth(0).click()
             page.get_by_label('Surname', exact=True).fill('Discarded change')
             page.once('dialog', lambda dialog: dialog.accept())
@@ -389,7 +448,7 @@ try:
             assert page.get_by_label('Password', exact=True).input_value() == ''
             assert not errors, errors
             page.close()
-            print(label + ': preview/PDF, mocked Auth, capture/navigation, evidence availability and loading failures, selected versus uploaded files, nearby upload errors, acknowledged-upload refresh recovery and no overflow/script errors passed.', flush=True)
+            print(label + ': preview/PDF, mocked Auth, capture/navigation, evidence upload states, ID reading availability/failure, review-before-apply, selective replacement, saved ID details, pending assessor review and no overflow/script errors passed.', flush=True)
         browser.close()
 finally:
     server.terminate()

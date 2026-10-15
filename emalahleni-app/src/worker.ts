@@ -7,8 +7,11 @@ import { evaluate } from './rules';
 import { HttpError } from './http';
 import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured, type EvidenceEnv } from './evidence';
 import {exportSnapshot} from './export-snapshot';
+import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-document';
+import {probeDocumentService} from './document-service-probe';
+import {evidenceWriterRoles} from './evidence-contracts';
 
-export interface Env extends EvidenceEnv {
+export interface Env extends IdReadingEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
   NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
 }
@@ -36,8 +39,8 @@ export function createHandler(authenticate: typeof actorFrom = actorFrom) {
 return async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url); const path = url.pathname;
   try {
-    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Emalahleni Beneficiary Assurance', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: 'disabled', mode: 'synthetic-only' });
-    if (request.method === 'GET' && path === '/storage-healthz') return json({ service: 'R2', binding: env.EVIDENCE_BUCKET ? 'configured' : 'missing', uploads: 'disabled' }, env.EVIDENCE_BUCKET ? 200 : 503);
+    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Emalahleni Beneficiary Assurance', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: uploadsConfigured(env)?'enabled':'disabled', idReading:idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
+    if (request.method === 'GET' && path === '/storage-healthz') return json({ service: 'R2', binding: env.EVIDENCE_BUCKET ? 'configured' : 'missing', uploads: uploadsConfigured(env)?'enabled':'disabled' }, env.EVIDENCE_BUCKET ? 200 : 503);
     if (request.method === 'GET' && path === '/storage-probe') {
       if (!env.EVIDENCE_BUCKET) return json({ service: 'R2', status: 'unavailable', writeEnabled: false }, 503);
       try { const object = await env.EVIDENCE_BUCKET.head('__preflight__/synthetic-probe'); return json({ service: 'R2', status: 'reachable', syntheticProbeObjectPresent: object !== null, writeEnabled: false }); }
@@ -58,14 +61,23 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     let actor: string;
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     const db = new Database(env.DATABASE_URL);
-    const evidenceRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/evidence(?:\/([0-9a-f-]+))?(?:\/(upload|scan|review|download))?$/i);
+    const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
+    if(serviceProbe){
+      if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      const project=z.uuid().parse(serviceProbe[1]),application=z.uuid().parse(serviceProbe[2]);
+      const [membership]=await db.forActor(actor,[{query:`SELECT m.role FROM public.project_memberships m JOIN public.applications a ON a.project_id=m.project_id WHERE m.project_id=$1 AND a.id=$2 AND m.user_id=$3 AND m.active`,params:[project,application,actor]}]);
+      if(!membership.length||!evidenceWriterRoles.includes(membership[0].role))throw new HttpError(403,'EVIDENCE_ACTION_DENIED');
+      return json({...await probeDocumentService(env),uploadsEnabled:uploadsConfigured(env),idReadingEnabled:idReadingConfigured(env)});
+    }
+    const evidenceRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/evidence(?:\/([0-9a-f-]+))?(?:\/(upload|scan|review|download|read-id))?$/i);
     if(evidenceRoute){
       const project=z.uuid().parse(evidenceRoute[1]),application=z.uuid().parse(evidenceRoute[2]);
       const id=evidenceRoute[3]?z.uuid().parse(evidenceRoute[3]):undefined,action=evidenceRoute[4];
-      if(!id&&request.method==='GET')return json({evidence:await listEvidence(db,actor,project,application),uploads:{enabled:uploadsConfigured(env)}});
+      if(!id&&request.method==='GET')return json({evidence:await listEvidence(db,actor,project,application),uploads:{enabled:uploadsConfigured(env)},idReading:{enabled:idReadingConfigured(env)}});
       if(!id&&request.method==='POST')return json(await createIntent(db,actor,project,application,await body(request),env),201);
       if(id&&action==='upload'&&request.method==='PUT')return json(await upload(db,actor,project,application,id,request,env));
       if(id&&action==='scan'&&request.method==='POST')return json(await rescan(db,actor,project,application,id,env));
+      if(id&&action==='read-id'&&request.method==='POST')return json(await readIdDocument(db,actor,project,application,id,env));
       if(id&&action==='review'&&request.method==='PUT')return json(await review(db,actor,project,application,id,await body(request)));
       if(id&&action==='download'&&request.method==='GET')return await download(db,actor,project,application,id,env);
       throw new HttpError(405,'METHOD_NOT_ALLOWED');

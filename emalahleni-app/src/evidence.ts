@@ -1,12 +1,12 @@
 import { z } from 'zod';
 import { Database } from './database';
 import { HttpError, readBytes } from './http';
-import { MAX_UPLOAD,evidenceKinds,subtypes } from './evidence-contracts';
+import { MAX_UPLOAD,evidenceKinds,subtypes,evidenceWriterRoles } from './evidence-contracts';
 export { MAX_UPLOAD,evidenceKinds,subtypes } from './evidence-contracts';
 export const uploadSchema=z.object({kind:z.enum(evidenceKinds),filename:z.string().trim().min(1).max(200).regex(/^[^\x00-\x1f\x7f/\\]+$/),contentType:z.enum(['application/pdf','image/jpeg','image/png']),size:z.number().int().min(1).max(MAX_UPLOAD),sha256:z.string().regex(/^[a-f0-9]{64}$/),dependantOrdinal:z.union([z.literal(1),z.literal(2)]).nullable().default(null)}).strict().refine(v=>(v.kind==='DEPENDANT_ID_OR_BIRTH_CERT')===(v.dependantOrdinal!==null),{message:'A dependant document must identify dependant 1 or 2.'});
 export const reviewSchema=z.object({decision:z.enum(['VERIFIED','REJECTED']),note:z.string().trim().min(10).max(500),documentSubtype:z.enum(subtypes),documentDate:z.iso.date().nullable(),certificationConfirmed:z.boolean(),contentConfirmed:z.boolean()}).strict();
 export interface EvidenceEnv { EVIDENCE_BUCKET?:R2Bucket; SCANNER?:Fetcher; SCANNER_TOKEN?:string; ENABLE_DOCUMENT_UPLOADS?:string; }
-const writer="m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER')";
+const writer=`m.role IN ('${evidenceWriterRoles.join("','")}')`;
 const reviewer="m.role IN ('ADMIN','ASSESSOR')";
 const scope=(roles:string)=>`EXISTS (SELECT 1 FROM public.project_memberships m WHERE m.project_id=$1 AND m.user_id=current_setting('app.actor_id',true) AND m.active AND ${roles})`;
 export async function digest(bytes:Uint8Array){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(bytes).buffer))).map(v=>v.toString(16).padStart(2,'0')).join('');}
@@ -27,7 +27,7 @@ export async function createIntent(db:Database,actor:string,project:string,appli
 }
 export async function scanVerdict(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<'CLEAN'|'INFECTED'|'SCAN_FAILED'>{
  if(!env.SCANNER||!env.SCANNER_TOKEN)return 'SCAN_FAILED';
- try{const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal:AbortSignal.timeout(20000)}));if(!response.ok)return 'SCAN_FAILED';const value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(await response.json());return value.sha256===sha256?value.verdict:'SCAN_FAILED';}catch{return 'SCAN_FAILED';}
+ try{const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal:AbortSignal.timeout(45000)}));if(!response.ok)return 'SCAN_FAILED';const value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(await response.json());return value.sha256===sha256?value.verdict:'SCAN_FAILED';}catch{return 'SCAN_FAILED';}
 }
 async function recordScan(db:Database,actor:string,project:string,application:string,id:string,hash:string,verdict:string){
  const status=verdict==='CLEAN'?'PENDING_REVIEW':verdict==='INFECTED'?'REJECTED':'PENDING_SCAN';

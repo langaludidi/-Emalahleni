@@ -1,0 +1,32 @@
+name: Emalahleni private scanner checks
+on:
+  push:
+    paths: ['emalahleni-app/scanner/**', '.github/workflows/emalahleni-scanner-checks.yml']
+  pull_request:
+    paths: ['emalahleni-app/scanner/**', '.github/workflows/emalahleni-scanner-checks.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: emalahleni-app/scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: sudo apt-get update && sudo apt-get install -y tesseract-ocr tesseract-ocr-eng poppler-utils util-linux
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm test && npm run typecheck
+      - run: npm run build
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+      - run: docker build --platform linux/amd64 -t emalahleni-scanner-test .
+      - run: docker run -d --name emalahleni-scanner-test --memory 4g --cpus 1 --mount type=bind,src="$PWD",dst=/contract,readonly --env SCANNER_TOKEN=synthetic-scanner-integration-token-00000000 emalahleni-scanner-test
+      - run: docker exec emalahleni-scanner-test node /contract/test/clamav-integration.mjs
+      - if: always()
+        run: docker rm -f emalahleni-scanner-test
