@@ -20,7 +20,8 @@ const headers={Authorization:`Bearer ${secret}`};
 const config=JSON.parse(await readFile(join(root,'wrangler.jsonc'),'utf8'));
 config.name='emalahleni-scanner-ci';
 config.main=join(root,'scanner/test/worker-entrypoint.ts');
-for(const key of ['account_id','assets','r2_buckets'])delete config[key];
+for(const key of ['account_id','assets'])delete config[key];
+config.r2_buckets=[{binding:'EVIDENCE_BUCKET',bucket_name:'emalahleni-scanner-ci'}];
 config.vars={SCANNER_TOKEN:secret};
 config.observability={enabled:false};
 config.containers[0]={...config.containers[0],name:'emalahleni-scanner-ci',image:join(root,'scanner/Dockerfile'),image_build_context:join(root,'scanner'),observability:{enabled:false}};
@@ -60,6 +61,13 @@ try{
   assert.equal(uploadScan.status,200);assert.deepEqual(await uploadScan.json(),{verdict:'CLEAN'});
  }
  console.log('Actual upload scan caller, octet-stream bridge and downloadable synthetic PDF passed.');
+ for(const sample of [bytes,storedSample]){
+  const storedUpload=await fetch(base+'/__ci_stored_upload',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:sample,signal:AbortSignal.timeout(140_000)});
+  assert.equal(storedUpload.status,200);const result=await storedUpload.json();
+  assert.equal(result.status,'PENDING_REVIEW',`Stored upload must scan cleanly: ${JSON.stringify(result)}`);
+  assert.equal(result.malware_status,'CLEAN');
+ }
+ console.log('Actual upload, local R2 storage and private native scanner passed for both synthetic PDFs (SQL doubled).');
  const reading=await fetch(base+'/read-id',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(140_000)});
  assert.equal(reading.status,200,`Native Worker reading failed: ${await reading.clone().text()}`);
  const result=await reading.json();assert.equal(result.sha256,sha256);assert.match(result.text,/SYNTHETIC PERSON/);assert.match(result.text,/0001015009086/);
