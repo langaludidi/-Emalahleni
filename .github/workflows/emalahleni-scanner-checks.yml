@@ -1,9 +1,9 @@
 name: Emalahleni private scanner checks
 on:
   push:
-    paths: ['emalahleni-app/scanner/**', '.github/workflows/emalahleni-scanner-checks.yml']
+    paths: ['emalahleni-app/scanner/**', 'emalahleni-app/src/**', 'emalahleni-app/wrangler.jsonc', 'emalahleni-app/package*.json', 'emalahleni-app/web/public/setup/synthetic-id.pdf', '.github/workflows/emalahleni-scanner-checks.yml']
   pull_request:
-    paths: ['emalahleni-app/scanner/**', '.github/workflows/emalahleni-scanner-checks.yml']
+    paths: ['emalahleni-app/scanner/**', 'emalahleni-app/src/**', 'emalahleni-app/wrangler.jsonc', 'emalahleni-app/package*.json', 'emalahleni-app/web/public/setup/synthetic-id.pdf', '.github/workflows/emalahleni-scanner-checks.yml']
   workflow_dispatch:
 permissions:
   contents: read
