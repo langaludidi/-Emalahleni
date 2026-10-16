@@ -3,7 +3,7 @@ import type {ExportSnapshot} from '../../src/export-contracts';
 import {packEvidence} from '../../src/export-contracts';
 export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  const {Document,Page,Text,View,StyleSheet,pdf}=await import('@react-pdf/renderer');
- const styles=StyleSheet.create({page:{padding:36,fontFamily:'Helvetica',fontSize:10,lineHeight:1.5},title:{fontSize:20,marginBottom:8,color:'#16322f'},draft:{fontSize:10,color:'#9a492e',marginBottom:15},heading:{fontSize:13,marginTop:16,marginBottom:6},row:{flexDirection:'row',marginBottom:5},label:{width:135,color:'#536650'},value:{flex:1},issue:{marginBottom:5},footer:{position:'absolute',bottom:20,left:36,right:36,fontSize:8,color:'#657771'}});
+ const styles=StyleSheet.create({page:{padding:36,fontFamily:'Helvetica',fontSize:10,lineHeight:1.5},title:{fontSize:20,marginBottom:8,color:'#0A2540'},draft:{fontSize:10,color:'#9a492e',marginBottom:15},heading:{fontSize:13,marginTop:16,marginBottom:6},row:{flexDirection:'row',marginBottom:5},label:{width:135,color:'#52667A'},value:{flex:1},issue:{marginBottom:5},footer:{position:'absolute',bottom:20,left:36,right:36,fontSize:8,color:'#52667A'}});
  const row=(label:string,value:unknown)=><View style={styles.row}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value===null||value===undefined||value===''?'Not recorded':String(value)}</Text></View>;
  const a=snapshot.form.applicant,h=snapshot.form.household,s=snapshot.form.site;
  const document=<Document title={`DRAFT - ${snapshot.reference} - Vectra Assure`} author="Vectra Solutions" subject="Draft verification summary — not submission approval">

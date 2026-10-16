@@ -2,6 +2,8 @@
 
 Vectra Assure is a platform by **Vectra Solutions** for evidence management, beneficiary verification and project readiness across projects. The product branding is independent of project names. Existing GitHub, Vercel, Cloudflare, database, storage and package identifiers retain their original names; saved data and encryption contexts are unchanged.
 
+Brand assets are in `web/public/brand/`: the horizontal logo and square app icon follow the approved Vectra Assure brand sheet. The interface uses navy `#0A2540`, teal `#00B4A6`, coral `#FF6B5B`, light grey `#E8EEF4` and off white `#F8FAFC`. Plus Jakarta Sans is self-hosted in `web/public/fonts/` with its SIL Open Font License. Primary controls use navy for readable contrast; teal and coral provide accents.
+
 This build implements the four-step verification form, conditional evidence requirements, encrypted draft storage, project-scoped authenticated API access, version checks, private evidence upload and scanning controls, assessor review, and the DoHS section workspace.
 
 It is a synthetic-data development build, not a production release. Authenticated synthetic case access is enabled when the required runtime secrets are present. Document uploads and ID reading remain disabled pending private-service deployment and live acceptance. Readiness rules are provisional and never approve submission readiness.
