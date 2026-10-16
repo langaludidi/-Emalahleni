@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { Database } from './database';
 import { HttpError, readBytes } from './http';
-import { MAX_UPLOAD,evidenceKinds,subtypes,evidenceWriterRoles } from './evidence-contracts';
+import { MAX_UPLOAD,evidenceKinds,subtypes,evidenceWriterRoles,type ScanFailureReason } from './evidence-contracts';
+import {startupReasons} from '../scanner/startup-errors';
 export { MAX_UPLOAD,evidenceKinds,subtypes } from './evidence-contracts';
 export const uploadSchema=z.object({kind:z.enum(evidenceKinds),filename:z.string().trim().min(1).max(200).regex(/^[^\x00-\x1f\x7f/\\]+$/),contentType:z.enum(['application/pdf','image/jpeg','image/png']),size:z.number().int().min(1).max(MAX_UPLOAD),sha256:z.string().regex(/^[a-f0-9]{64}$/),dependantOrdinal:z.union([z.literal(1),z.literal(2)]).nullable().default(null)}).strict().refine(v=>(v.kind==='DEPENDANT_ID_OR_BIRTH_CERT')===(v.dependantOrdinal!==null),{message:'A dependant document must identify dependant 1 or 2.'});
 export const reviewSchema=z.object({decision:z.enum(['VERIFIED','REJECTED']),note:z.string().trim().min(10).max(500),documentSubtype:z.enum(subtypes),documentDate:z.iso.date().nullable(),certificationConfirmed:z.boolean(),contentConfirmed:z.boolean()}).strict();
@@ -25,9 +26,42 @@ export async function createIntent(db:Database,actor:string,project:string,appli
  const [rows]=await db.forActor(actor,[{query:`WITH created AS (INSERT INTO public.evidence (id,project_id,application_id,kind,storage_key,filename,content_type,certification_required,dependant_ordinal) SELECT $3,$1,a.id,$4,$5,$6,$7,$8,$9 FROM public.applications a WHERE a.project_id=$1 AND a.id=$2 AND ${scope(writer)} RETURNING id), intent AS (INSERT INTO public.evidence_upload_intents (evidence_id,project_id,application_id,expected_size,expected_sha256,expected_content_type,expires_at,created_by) SELECT id,$1,$2,$10,$11,$7,now()+interval '15 minutes',$12 FROM created), audited AS (INSERT INTO public.audit_events (project_id,actor_id,action,metadata) SELECT $1,$12,'EVIDENCE_UPLOAD_INTENT',jsonb_build_object('applicationId',$2::text,'evidenceId',id) FROM created) SELECT id FROM created`,params:[project,application,id,v.kind,key,v.filename,v.contentType,['APPLICANT_ID','SPOUSE_ID'].includes(v.kind),v.dependantOrdinal,v.size,v.sha256,actor]}]);
  if(!rows.length)throw new HttpError(404,'NOT_FOUND');return {id,uploadPath:`/api/projects/${project}/applications/${application}/evidence/${id}/upload`,expiresInSeconds:900};
 }
+type ScanResult={verdict:'CLEAN'|'INFECTED'}|{verdict:'SCAN_FAILED';failure:ScanFailureReason};
+const scannerFailureCodes:Readonly<Record<string,ScanFailureReason>>={SCAN_TIMEOUT:'ENGINE_TIMEOUT',SCAN_UNAVAILABLE:'ENGINE_UNAVAILABLE',SIGNATURES_NOT_READY:'SIGNATURES_NOT_READY',SCANNER_NOT_READY:'HEALTH',INVALID_SCANNER_RESPONSE:'ENGINE_RESPONSE',INCOMPLETE_SCANNER_RESPONSE:'ENGINE_RESPONSE',SCAN_FAILED:'ENGINE_RESPONSE',EMPTY_FILE:'EMPTY_FILE',BODY_TOO_LARGE:'BODY_TOO_LARGE'};
+export async function scanResult(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<ScanResult>{
+ const failed=(failure:ScanFailureReason):ScanResult=>({verdict:'SCAN_FAILED',failure});
+ if(!env.SCANNER||!env.SCANNER_TOKEN)return failed('CONFIGURATION');
+ const signal=AbortSignal.timeout(120000);
+ try{
+  const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal}));
+  if(response.status!==200){
+   if(response.status===401){await response.body?.cancel();return failed('CREDENTIALS');}
+   if(response.status===415){await response.body?.cancel();return failed('UNSUPPORTED_MEDIA_TYPE');}
+   if(response.status===429){await response.body?.cancel();return failed('BUSY');}
+   try{
+    const value=JSON.parse(new TextDecoder().decode(await readBytes(response,1024))) as {error?:unknown;reason?:unknown};
+    if(value.error==='SCANNER_START_FAILED'){
+     const reason=startupReasons.find(candidate=>candidate===value.reason);
+     return failed(reason&&reason!=='UNKNOWN'?`STARTUP_${reason}`:'STARTUP');
+    }
+    if(value.error==='SCANNER_CONNECTION_FAILED')return failed('CONNECTION');
+    if(typeof value.error==='string'&&Object.hasOwn(scannerFailureCodes,value.error))return failed(scannerFailureCodes[value.error]);
+   }catch{}
+   return failed(response.status>=500?'UNAVAILABLE':'HTTP_ERROR');
+  }
+  let value;
+  try{value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(JSON.parse(new TextDecoder().decode(await readBytes(response,1024))));}
+  catch{return failed(signal.aborted?'TIMEOUT':'INVALID_RESPONSE');}
+  return value.sha256===sha256?{verdict:value.verdict}:failed('HASH_MISMATCH');
+ }catch{return failed(signal.aborted?'TIMEOUT':'CONNECTION');}
+}
 export async function scanVerdict(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<'CLEAN'|'INFECTED'|'SCAN_FAILED'>{
- if(!env.SCANNER||!env.SCANNER_TOKEN)return 'SCAN_FAILED';
- try{const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal:AbortSignal.timeout(120000)}));if(!response.ok)return 'SCAN_FAILED';const value=z.object({sha256:z.string(),verdict:z.enum(['CLEAN','INFECTED'])}).strict().parse(await response.json());return value.sha256===sha256?value.verdict:'SCAN_FAILED';}catch{return 'SCAN_FAILED';}
+ return (await scanResult(bytes,sha256,env)).verdict;
+}
+async function scanAndRecord(db:Database,actor:string,project:string,application:string,id:string,hash:string,bytes:Uint8Array,env:EvidenceEnv){
+ const result=await scanResult(bytes,hash,env);
+ const recorded=await recordScan(db,actor,project,application,id,hash,result.verdict);
+ return result.verdict==='SCAN_FAILED'?{...recorded,scanFailure:result.failure}:recorded;
 }
 async function recordScan(db:Database,actor:string,project:string,application:string,id:string,hash:string,verdict:string){
  const status=verdict==='CLEAN'?'PENDING_REVIEW':verdict==='INFECTED'?'REJECTED':'PENDING_SCAN';
@@ -44,13 +78,13 @@ export async function upload(db:Database,actor:string,project:string,application
  if(!claimed.length)throw new HttpError(409,'UPLOAD_ALREADY_CLAIMED');
  try{await env.EVIDENCE_BUCKET!.put(intent.storage_key,bytes,{httpMetadata:{contentType:intent.expected_content_type},customMetadata:{sha256:hash}});}catch{throw new HttpError(503,'STORAGE_UNAVAILABLE');}
  await db.forActor(actor,[{query:"UPDATE public.evidence SET uploaded_at=now() WHERE project_id=$1 AND application_id=$2 AND id=$3 AND status='PENDING_SCAN'",params:[project,application,id]}]);
- return recordScan(db,actor,project,application,id,hash,await scanVerdict(bytes,hash,env));
+ return scanAndRecord(db,actor,project,application,id,hash,bytes,env);
 }
 export async function rescan(db:Database,actor:string,project:string,application:string,id:string,env:EvidenceEnv){
  requireUploads(env);await roleCheck(db,actor,project,writer);const [rows]=await db.forActor(actor,[{query:"SELECT storage_key,sha256 FROM public.evidence WHERE project_id=$1 AND application_id=$2 AND id=$3 AND status='PENDING_SCAN' AND uploaded_at IS NOT NULL",params:[project,application,id]}]);
  if(!rows.length)throw new HttpError(409,'SCAN_NOT_PENDING');const object=await env.EVIDENCE_BUCKET!.get(rows[0].storage_key);if(!object)throw new HttpError(503,'STORAGE_UNAVAILABLE');
  if(object.size>MAX_UPLOAD)throw new HttpError(413,'BODY_TOO_LARGE');const bytes=new Uint8Array(await object.arrayBuffer());const hash=await digest(bytes);if(hash!==rows[0].sha256)throw new HttpError(409,'STORED_FILE_CHANGED');
- return recordScan(db,actor,project,application,id,hash,await scanVerdict(bytes,hash,env));
+ return scanAndRecord(db,actor,project,application,id,hash,bytes,env);
 }
 export async function review(db:Database,actor:string,project:string,application:string,id:string,input:unknown){
  await roleCheck(db,actor,project,reviewer);const v=reviewSchema.parse(input);

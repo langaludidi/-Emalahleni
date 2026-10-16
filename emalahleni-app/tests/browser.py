@@ -213,7 +213,7 @@ try:
             stored_cases = {}
             writes = []
             fail_save = {'value':False}
-            upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'service_error':None,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False}
+            upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'service_error':None,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False,'retry_failure':None}
             evidence_documents, upload_intents, uploaded_bytes = [], [], []
             id_reads = []
             def valid_synthetic_id():
@@ -250,6 +250,10 @@ try:
                     result = {'id':'synthetic-document','status':'PENDING_REVIEW','malware_status':'CLEAN'}
                     if upload_state['fail_refresh_after_upload']:
                         upload_state['fail_register'] = True
+                elif suffix.endswith('/evidence/synthetic-document/scan') and method == 'POST':
+                    failed = upload_state['retry_failure']
+                    evidence_documents[0].update(status='PENDING_SCAN' if failed else 'PENDING_REVIEW', malware_status='SCAN_FAILED' if failed else 'CLEAN')
+                    result = {**evidence_documents[0], **({'scanFailure':failed} if failed else {})}
                 elif suffix.endswith('/evidence/synthetic-document/read-id') and method == 'POST':
                     id_reads.append(suffix)
                     if upload_state['fail_reading']:
@@ -407,6 +411,18 @@ try:
             assert not page.get_by_text('No documents recorded for this case.', exact=True).is_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             page.screenshot(path=str(review / (label + '-evidence-upload-status.png')), full_page=True)
+            # A completed retry can still fail; report the fixed reason and keep the document quarantined.
+            evidence_documents[0].update(status='PENDING_SCAN', malware_status='SCAN_FAILED')
+            upload_state['retry_failure'] = 'CONNECTION'
+            refresh_evidence.click()
+            page.get_by_role('button', name='Retry scan', exact=True).click()
+            expect(uploader.get_by_role('alert')).to_have_text('Scan failed (CONNECTION). The file remains quarantined. Use Retry scan; if it fails again, report this code.')
+            assert page.locator('.evidence-register').get_by_text('applicant id · pending scan · scan failed', exact=True).is_visible()
+            assert not page.get_by_text('Scanner retry completed.', exact=True).is_visible()
+            upload_state['retry_failure'] = None
+            page.get_by_role('button', name='Retry scan', exact=True).click()
+            uploader.get_by_text('Scanned successfully. Assessor review is still required.', exact=True).wait_for()
+            assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
             reader = page.get_by_role('region', name='Applicant ID reading', exact=True)
             read_button = reader.get_by_role('button', name='Read ID details', exact=True)
             assert read_button.is_disabled() and id_reads == []

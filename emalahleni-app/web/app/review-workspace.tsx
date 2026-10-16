@@ -1,6 +1,6 @@
 'use client';
 import { useEffect,useRef,useState } from 'react';
-import { evidenceKinds,subtypes,MAX_UPLOAD,evidenceWriterRoles } from '../../src/evidence-contracts';
+import { evidenceKinds,subtypes,MAX_UPLOAD,evidenceWriterRoles,scanFailureReasons } from '../../src/evidence-contracts';
 import { dohsSections } from '../../src/contracts';
 import {idFieldsSchema,type IdFields,type IdReading} from '../../src/id-reading';
 import IdProposal from './id-proposal';
@@ -9,6 +9,7 @@ interface Props { root:string;role:string;api:Api;sendFile:(path:string,bytes:Ar
 type Document={id:string;kind:string;filename:string;status:string;malware_status:string;reviewed_by:string|null;document_date:string|null;document_subtype:string|null};
 type Department={section:string;state:string;note:string;reviewed_at:string};
 const label=(s:string)=>s.toLowerCase().replaceAll('_',' ');
+function scanFailureMessage(value:unknown){const reason=scanFailureReasons.find(code=>code===value)??'UNKNOWN';return `Scan failed (${reason}). The file remains quarantined. Use Retry scan; if it fails again, report this code.`;}
 export default function ReviewWorkspace({root,role,api,sendFile,download,changed,photo,applicant,applyId}:Props){
  const [documents,setDocuments]=useState<Document[]>([]),[reviews,setReviews]=useState<Department[]>([]);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
@@ -82,7 +83,8 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
    const bytes=await file.arrayBuffer();const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
    const intent=await api(root+'/evidence','POST',{kind,filename:file.name,contentType:file.type,size:file.size,sha256,dependantOrdinal:kind==='DEPENDANT_ID_OR_BIRTH_CERT'?Number(ordinal):null});
    const result=await sendFile(intent.uploadPath,bytes,file.type);setFile(null);if(fileInput.current)fileInput.current.value='';changed();
-   const outcome=result.malware_status==='CLEAN'?'Uploaded and scanned. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':'Uploaded to quarantine. Scanning must be retried before review.';
+   const outcome=result.malware_status==='CLEAN'?'Uploaded and scanned. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':scanFailureMessage(result.scanFailure);
+   setUploadError(result.malware_status!=='CLEAN');
    setUploadMessage(outcome);
    if(!await refresh())setUploadMessage(outcome+' The register could not refresh. Use Refresh evidence and reviews to check the saved document.');
   }catch(e){
@@ -97,7 +99,7 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
   <button className="secondary" disabled={busy||evidenceState==='loading'} onClick={()=>run(async()=>{await refresh();})}>Refresh evidence and reviews</button>
   {evidenceState==='loading'&&<p className="hint" role="status">Loading recorded evidence…</p>}
   {evidenceState==='error'&&<p className="hint" role="alert">Unable to load recorded evidence. Refresh to check whether a document is saved.</p>}
-  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||uploadsEnabled!==true} onClick={()=>run(async()=>{await api(root+`/evidence/${d.id}/scan`,'POST');changed();await refresh();setMessage('Scanner retry completed.');})}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&<button className="secondary" onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div></li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
+  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||uploadsEnabled!==true} onClick={()=>run(async()=>{const result=await api(root+`/evidence/${d.id}/scan`,'POST');changed();await refresh();setUploadError(result.malware_status!=='CLEAN');setUploadMessage(result.malware_status==='CLEAN'?'Scanned successfully. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':scanFailureMessage(result.scanFailure));})}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&<button className="secondary" onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div></li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
   {canUpload&&<fieldset aria-label="Upload evidence" disabled={busy||uploadsEnabled!==true}><h3>Upload evidence</h3>
    {uploadsEnabled!==true&&<div className="notice" role="status"><strong>{evidenceState==='loading'?'Checking upload availability…':uploadsEnabled===false?'Document uploads are unavailable':'Upload availability could not be confirmed'}</strong><p>{uploadsEnabled===false?'The document scanning service must be connected before uploads can be accepted. Choosing a file on your device does not add it to the case.':'Use Refresh evidence and reviews to check availability before choosing a file.'}</p></div>}
    <p className="hint">Upload the file to add it to this case. After a clean scan, use Read ID details to review suggestions for the applicant form.</p>

@@ -52,6 +52,14 @@ try{
  const scan=await fetch(base+'/scan',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(140_000)});
  assert.equal(scan.status,200,`Native Worker scan failed: ${await scan.clone().text()}`);
  assert.deepEqual(await scan.json(),{sha256,verdict:'CLEAN'});
+ // Exercise the real upload caller, including its octet-stream request and response validation,
+ // with the exact downloadable sample that failed after the live upload.
+ const storedSample=await readFile(join(root,'web/public/setup/synthetic-id.pdf'));
+ for(const sample of [bytes,storedSample]){
+  const uploadScan=await fetch(base+'/__ci_upload_scan',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:sample,signal:AbortSignal.timeout(140_000)});
+  assert.equal(uploadScan.status,200);assert.deepEqual(await uploadScan.json(),{verdict:'CLEAN'});
+ }
+ console.log('Actual upload scan caller, octet-stream bridge and downloadable synthetic PDF passed.');
  const reading=await fetch(base+'/read-id',{method:'POST',headers:{...headers,'Content-Type':'application/pdf'},body:bytes,signal:AbortSignal.timeout(140_000)});
  assert.equal(reading.status,200,`Native Worker reading failed: ${await reading.clone().text()}`);
  const result=await reading.json();assert.equal(result.sha256,sha256);assert.match(result.text,/SYNTHETIC PERSON/);assert.match(result.text,/0001015009086/);

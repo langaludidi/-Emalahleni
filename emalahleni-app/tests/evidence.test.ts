@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { uploadSchema,reviewSchema,scanVerdict,validSignature,digest,uploadsConfigured,createIntent,upload,rescan,type EvidenceEnv } from '../src/evidence';
+import { uploadSchema,reviewSchema,scanVerdict,scanResult,validSignature,digest,uploadsConfigured,createIntent,upload,rescan,type EvidenceEnv } from '../src/evidence';
 import type {Database} from '../src/database';
 import {HttpError} from '../src/http';
 const bytes=new TextEncoder().encode('%PDF-1.4\nSynthetic document');
@@ -37,4 +37,24 @@ test('review clients cannot set scanner status or impersonate the reviewer',()=>
  assert.equal(reviewSchema.safeParse(input).success,true);
  assert.equal(reviewSchema.safeParse({...input,malware_status:'CLEAN'}).success,false);
  assert.equal(reviewSchema.safeParse({...input,reviewed_by:'another-person'}).success,false);
+});
+test('failed scans expose fixed useful reasons without returning provider text or accepting an invalid verdict',async()=>{
+ const hash=await digest(bytes),secret='synthetic-private-scanner-token';
+ const env=(response:()=>Promise<Response>):EvidenceEnv=>({SCANNER_TOKEN:secret,SCANNER:{fetch:response} as unknown as Fetcher});
+ for(const [status,value,reason] of [
+  [401,{},'CREDENTIALS'],[415,{},'UNSUPPORTED_MEDIA_TYPE'],[429,{},'BUSY'],
+  [503,{error:'SCANNER_START_FAILED',reason:'INSTANCE',private:secret},'STARTUP_INSTANCE'],
+  [503,{error:'SCANNER_START_FAILED',reason:secret},'STARTUP'],
+  [503,{error:'SCANNER_CONNECTION_FAILED'},'CONNECTION'],[503,{private:secret},'UNAVAILABLE'],
+  [503,{error:'SIGNATURES_NOT_READY'},'SIGNATURES_NOT_READY'],[503,{error:'SCAN_TIMEOUT'},'ENGINE_TIMEOUT'],[400,{error:'EMPTY_FILE'},'EMPTY_FILE'],
+  [200,{sha256:'0'.repeat(64),verdict:'CLEAN'},'HASH_MISMATCH'],[200,{sha256:hash,verdict:'CLEAN',private:secret},'INVALID_RESPONSE'],
+ ] as const){
+  const result=await scanResult(bytes,hash,env(async()=>Response.json(value,{status})));
+  assert.deepEqual(result,{verdict:'SCAN_FAILED',failure:reason});assert.equal(JSON.stringify(result).includes(secret),false);
+ }
+ assert.deepEqual(await scanResult(bytes,hash,env(async()=>new Response(secret,{status:200}))),{verdict:'SCAN_FAILED',failure:'INVALID_RESPONSE'});
+ assert.deepEqual(await scanResult(bytes,hash,env(async()=>{throw Error(secret);})),{verdict:'SCAN_FAILED',failure:'CONNECTION'});
+ assert.deepEqual(await scanResult(bytes,hash,env(async()=>new Response('x'.repeat(2048),{status:200}))),{verdict:'SCAN_FAILED',failure:'INVALID_RESPONSE'});
+ assert.deepEqual(await scanResult(bytes,hash,env(async()=>Response.json({sha256:hash,verdict:'CLEAN'}))),{verdict:'CLEAN'});
+ assert.deepEqual(await scanResult(bytes,hash,env(async()=>Response.json({sha256:hash,verdict:'INFECTED'}))),{verdict:'INFECTED'});
 });
