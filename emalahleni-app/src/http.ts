@@ -1,4 +1,4 @@
-export class HttpError extends Error { constructor(public status: number, public code: string) { super(code); } }
+export class HttpError extends Error { constructor(public status: number, public code: string, public headers:Record<string,string>={}) { super(code); } }
 export async function readBytes(request: Request|Response, limit: number) {
   const reader=request.body?.getReader();if(!reader)throw new HttpError(400,'BODY_REQUIRED');
   const chunks:Uint8Array[]=[];let length=0;

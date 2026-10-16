@@ -1,7 +1,6 @@
 name: Emalahleni build and browser checks
 on:
   push:
-    branches: [main]
     paths: ['emalahleni-app/**', '.github/workflows/emalahleni-checks.yml']
   workflow_dispatch:
 permissions:
@@ -10,6 +9,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vectra_ci
+          POSTGRES_PASSWORD: synthetic-ci-postgres-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectra_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: emalahleni-app
@@ -26,6 +35,13 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run typecheck
       - run: npm test
+      - run: node --import tsx tests/upload-concurrency.ts
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGDATABASE: vectra_ci
+          PGUSER: postgres
+          PGPASSWORD: synthetic-ci-postgres-password
       - run: npm run build
       - uses: actions/setup-python@v5
         with:

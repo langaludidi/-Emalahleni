@@ -2,11 +2,18 @@
 import scanner, { DocumentScanner } from '../container-worker';
 import {scanResult,digest,upload} from '../../src/evidence';
 import type {Database} from '../../src/database';
+import {limitPublicApi,type RateLimitEnv} from '../../src/rate-limit';
+import {HttpError} from '../../src/http';
 import {readBytes} from '../../src/http';
 export { DocumentScanner };
-type Env = Parameters<typeof scanner.fetch>[1]&{EVIDENCE_BUCKET:R2Bucket};
+type Env = Parameters<typeof scanner.fetch>[1]&{EVIDENCE_BUCKET:R2Bucket}&RateLimitEnv;
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if(new URL(request.url).pathname==='/__ci_rate_limit'){
+      if(request.headers.get('Authorization')!==`Bearer ${env.SCANNER_TOKEN}`)return new Response(null,{status:401});
+      try{await limitPublicApi(request,env);return new Response(null,{status:204});}
+      catch(error){if(error instanceof HttpError)return Response.json({error:error.code},{status:error.status,headers:{...error.headers,'Cache-Control':'no-store'}});throw error;}
+    }
     if(new URL(request.url).pathname==='/__ci_stored_upload'&&request.method==='POST'){
       if(request.headers.get('Authorization')!==`Bearer ${env.SCANNER_TOKEN}`)return new Response(null,{status:401});
       const bytes=await readBytes(request,5*1024*1024),hash=await digest(bytes);

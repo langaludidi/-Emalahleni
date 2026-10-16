@@ -22,7 +22,8 @@ config.name='emalahleni-scanner-ci';
 config.main=join(root,'scanner/test/worker-entrypoint.ts');
 for(const key of ['account_id','assets'])delete config[key];
 config.r2_buckets=[{binding:'EVIDENCE_BUCKET',bucket_name:'emalahleni-scanner-ci'}];
-config.vars={SCANNER_TOKEN:secret};
+config.vars={SCANNER_TOKEN:secret,ENABLE_API_RATE_LIMITS:'true'};
+config.ratelimits=config.ratelimits.map(binding=>({...binding,simple:{limit:3,period:60}}));
 config.observability={enabled:false};
 config.containers[0]={...config.containers[0],name:'emalahleni-scanner-ci',image:join(root,'scanner/Dockerfile'),image_build_context:join(root,'scanner'),observability:{enabled:false}};
 config.exports.DocumentScanner.container='emalahleni-scanner-ci';
@@ -44,6 +45,11 @@ try{
   await delay(1000);
  }
  assert.equal(listening,true,'Local Worker must become ready within three minutes.');
+ for(let index=0;index<4;index++){
+  const limited=await fetch(base+'/__ci_rate_limit',{headers});assert.equal(limited.status,index<3?204:429);
+  if(index===3){assert.equal(limited.headers.get('Retry-After'),'60');assert.equal(limited.headers.get('Cache-Control'),'no-store');}
+ }
+ console.log('Native workerd rate-limit binding admitted three requests and rejected the fourth with Retry-After.');
  const started=Date.now();
  const health=await fetch(base+'/healthz',{headers,signal:AbortSignal.timeout(140_000)});
  assert.equal(health.status,200,`Native Worker health failed: ${await health.clone().text()}`);

@@ -17,6 +17,7 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
  const [uploadsEnabled,setUploadsEnabled]=useState<boolean|null>(null),[uploadMessage,setUploadMessage]=useState(''),[uploadError,setUploadError]=useState(false);
  const [idReadingEnabled,setIdReadingEnabled]=useState<boolean|null>(null),[idDocument,setIdDocument]=useState(''),[idProposal,setIdProposal]=useState<IdReading|null>(null),[idMessage,setIdMessage]=useState(''),[idError,setIdError]=useState(false);
  const [serviceMessage,setServiceMessage]=useState(''),[serviceError,setServiceError]=useState(false);
+ const [scanMessages,setScanMessages]=useState<Record<string,{message:string;error:boolean}>>({});
  const fileInput=useRef<HTMLInputElement>(null);
  const [kind,setKind]=useState<string>('APPLICANT_ID'),[ordinal,setOrdinal]=useState('1'),[file,setFile]=useState<File|null>(null);
  const [selected,setSelected]=useState<string>(''),[decision,setDecision]=useState('VERIFIED'),[subtype,setSubtype]=useState('ID_COPY'),[date,setDate]=useState(''),[note,setNote]=useState(''),[certified,setCertified]=useState(false),[confirmed,setConfirmed]=useState(false);
@@ -32,7 +33,7 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
   return e.status==='fulfilled';
  }
  async function run(task:()=>Promise<void>){setBusy(true);try{await task();}catch(e){setMessage(e instanceof Error?e.message:'Unable to complete action.');}finally{setBusy(false);}}
- useEffect(()=>{let current=true;setDocuments([]);setReviews([]);setSelected('');setMessage('');setUploadMessage('');setUploadError(false);setNote('');setDepartmentNote('');setSection('PAGE_2');setState('PENDING');setFile(null);if(fileInput.current)fileInput.current.value='';setCertified(false);setConfirmed(false);void refresh(()=>current);return()=>{current=false};},[root]);
+ useEffect(()=>{let current=true;setDocuments([]);setScanMessages({});setReviews([]);setSelected('');setMessage('');setUploadMessage('');setUploadError(false);setNote('');setDepartmentNote('');setSection('PAGE_2');setState('PENDING');setFile(null);if(fileInput.current)fileInput.current.value='';setCertified(false);setConfirmed(false);void refresh(()=>current);return()=>{current=false};},[root]);
  function chooseSection(value:string){setSection(value);const prior=reviews.find(r=>r.section===value);setState(prior?.state??'PENDING');setDepartmentNote(prior?.note??'');}
  async function checkDocumentService(){
   setBusy(true);setServiceError(false);setServiceMessage('Checking the private scanner and ID reader with a synthetic document. This can take a few minutes.');
@@ -58,7 +59,7 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
     'DOCUMENT_SERVICE_NOT_READY:ID_READING':'The scan passed, but the synthetic ID could not be read. Please report this ID-reading message.',
     'DOCUMENT_SERVICE_NOT_READY:ID_VALIDATION':'The scan and reading completed, but the synthetic ID details did not match. Please report this ID-details message.',
    };
-   setServiceMessage(messages[code]??'The document-service check could not complete. Please report this check message.');
+   setServiceMessage(code.startsWith('Too many requests.')?code:messages[code]??'The document-service check could not complete. Please report this check message.');
   }
   finally{setBusy(false);}
  }
@@ -71,9 +72,18 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
    idFieldsSchema.parse(proposal.fields);setIdProposal(proposal);setIdMessage('Review the proposed details below before applying them.');
   }catch(error){
    const code=error instanceof Error?error.message:'';setIdError(true);if(code==='ID_READING_NOT_CONFIGURED')setIdReadingEnabled(false);
-   setIdMessage(code==='ID_READING_NOT_CONFIGURED'?'ID reading is unavailable until the private document service is connected.':code==='ID_READING_FILE_REJECTED'?'The scanner rejected this file. Its ID details cannot be used. Refresh the register to see its status.':code==='CLEAN_APPLICANT_ID_REQUIRED'?'Choose an applicant ID that has passed its malware scan.':code==='ID_READING_STATE_CHANGED'?'The document or your project access changed while reading. Refresh the register before trying again.':'Unable to read ID details. Try again when the service is ready, or enter the details manually.');
+   setIdMessage(code.startsWith('Too many requests.')?code:code==='ID_READING_NOT_CONFIGURED'?'ID reading is unavailable until the private document service is connected.':code==='ID_READING_FILE_REJECTED'?'The scanner rejected this file. Its ID details cannot be used. Refresh the register to see its status.':code==='CLEAN_APPLICANT_ID_REQUIRED'?'Choose an applicant ID that has passed its malware scan.':code==='ID_READING_STATE_CHANGED'?'The document or your project access changed while reading. Refresh the register before trying again.':'Unable to read ID details. Try again when the service is ready, or enter the details manually.');
    if(code==='ID_READING_FILE_REJECTED'){changed();await refresh();}
   }finally{setBusy(false);}
+ }
+ async function retryScan(document:Document){
+  setScanMessages(current=>({...current,[document.id]:{message:'Scanning the stored file. Temporary service failures will be retried automatically.',error:false}}));
+  try{
+   const result=await api(root+`/evidence/${document.id}/scan`,'POST');changed();await refresh();
+   const error=result.malware_status!=='CLEAN';
+   const message=result.malware_status==='CLEAN'?'Scanned successfully. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':scanFailureMessage(result.scanFailure);
+   setScanMessages(current=>({...current,[document.id]:{message,error}}));
+  }catch(error){setScanMessages(current=>({...current,[document.id]:{message:error instanceof Error?error.message:'The scan could not complete. The file remains quarantined.',error:true}}));}
  }
  async function uploadFile(){
   setBusy(true);setUploadError(false);setUploadMessage('Uploading and checking the file. Please keep this form open.');
@@ -99,7 +109,7 @@ export default function ReviewWorkspace({root,role,api,sendFile,download,changed
   <button className="secondary" disabled={busy||evidenceState==='loading'} onClick={()=>run(async()=>{await refresh();})}>Refresh evidence and reviews</button>
   {evidenceState==='loading'&&<p className="hint" role="status">Loading recorded evidence…</p>}
   {evidenceState==='error'&&<p className="hint" role="alert">Unable to load recorded evidence. Refresh to check whether a document is saved.</p>}
-  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||uploadsEnabled!==true} onClick={()=>run(async()=>{const result=await api(root+`/evidence/${d.id}/scan`,'POST');changed();await refresh();setUploadError(result.malware_status!=='CLEAN');setUploadMessage(result.malware_status==='CLEAN'?'Scanned successfully. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':scanFailureMessage(result.scanFailure));})}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&<button className="secondary" onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div></li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
+  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||uploadsEnabled!==true} onClick={()=>run(()=>retryScan(d))}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&<button className="secondary" onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div>{scanMessages[d.id]&&<p className="hint upload-feedback" role={scanMessages[d.id].error?'alert':'status'} aria-live="polite">{scanMessages[d.id].message}</p>}</li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
   {canUpload&&<fieldset aria-label="Upload evidence" disabled={busy||uploadsEnabled!==true}><h3>Upload evidence</h3>
    {uploadsEnabled!==true&&<div className="notice" role="status"><strong>{evidenceState==='loading'?'Checking upload availability…':uploadsEnabled===false?'Document uploads are unavailable':'Upload availability could not be confirmed'}</strong><p>{uploadsEnabled===false?'The document scanning service must be connected before uploads can be accepted. Choosing a file on your device does not add it to the case.':'Use Refresh evidence and reviews to check availability before choosing a file.'}</p></div>}
    <p className="hint">Upload the file to add it to this case. After a clean scan, use Read ID details to review suggestions for the applicant form.</p>

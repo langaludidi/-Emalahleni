@@ -172,7 +172,7 @@ export function createScannerServer(options = {}) {
     const type = String(req.headers['content-type'] ?? '').split(';')[0].toLowerCase();
     const supported = ['application/pdf','image/jpeg','image/png',...(path === '/scan' ? ['application/octet-stream'] : [])];
     if (!supported.includes(type)) { req.resume(); return send(415,{error:'UNSUPPORTED_MEDIA_TYPE'}); }
-    if (busy) { req.resume(); return send(429,{error:'SCANNER_BUSY'}); }
+    if (busy) { req.resume(); res.setHeader('Retry-After','1'); return send(429,{error:'SCANNER_BUSY'}); }
     busy = true;
     const controller = new AbortController(), deadline = setTimeout(() => controller.abort(), 50_000);
     let sha256;

@@ -10,13 +10,14 @@ import {exportSnapshot} from './export-snapshot';
 import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-document';
 import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
 import {evidenceWriterRoles} from './evidence-contracts';
+import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 
-export interface Env extends IdReadingEnv {
+export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
   NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
 }
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
-const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers });
+const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
 async function body(request: Request) {
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new HttpError(415, 'JSON_REQUIRED');
   const reader = request.body?.getReader();
@@ -39,6 +40,7 @@ export function createHandler(authenticate: typeof actorFrom = actorFrom) {
 return async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url); const path = url.pathname;
   try {
+    if(path.startsWith('/api/'))await limitPublicApi(request,env);
     if (request.method === 'GET' && path === '/healthz') return json({ application: 'Vectra Assure', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: uploadsConfigured(env)?'enabled':'disabled', idReading:idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
     if (request.method === 'GET' && path === '/storage-healthz') return json({ service: 'R2', binding: env.EVIDENCE_BUCKET ? 'configured' : 'missing', uploads: uploadsConfigured(env)?'enabled':'disabled' }, env.EVIDENCE_BUCKET ? 200 : 503);
     if (request.method === 'GET' && path === '/storage-probe') {
@@ -60,6 +62,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if (env.ENABLE_CASE_API !== 'true' || !env.DATABASE_URL || !env.FORM_ENCRYPTION_KEY) throw new HttpError(503, 'CASE_API_NOT_CONFIGURED');
     let actor: string;
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
+    await limitActorAction(request,env,actor);
     const db = new Database(env.DATABASE_URL);
     const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
     if(serviceProbe){
@@ -141,7 +144,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if(action==='export'&&request.method==='GET'&&!route[4])return json(await exportSnapshot(db,actor,project,id,env.FORM_ENCRYPTION_KEY));
     throw new HttpError(405, 'METHOD_NOT_ALLOWED');
   } catch (e) {
-    if (e instanceof HttpError) return json({ error: e.code, ...(e instanceof DocumentServiceCheckError?{failedCheck:e.failedCheck}:{}) }, e.status);
+    if (e instanceof HttpError) return json({ error: e.code, ...(e instanceof DocumentServiceCheckError?{failedCheck:e.failedCheck}:{}) }, e.status,e.headers);
     if (e instanceof ZodError) return json({ error: 'VALIDATION_FAILED', fields: e.issues.map(i => ({ path: i.path.join('.'), message: i.message })) }, 400);
     if ((e as { code?: string }).code === '23505') return json({ error: 'REFERENCE_ALREADY_EXISTS' }, 409);
     if ((e as { code?: string }).code === '42501') return json({ error: 'ACCESS_DENIED' }, 403);

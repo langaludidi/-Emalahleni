@@ -28,13 +28,14 @@ export async function createIntent(db:Database,actor:string,project:string,appli
 }
 type ScanResult={verdict:'CLEAN'|'INFECTED'}|{verdict:'SCAN_FAILED';failure:ScanFailureReason};
 const scannerFailureCodes:Readonly<Record<string,ScanFailureReason>>={SCAN_TIMEOUT:'ENGINE_TIMEOUT',SCAN_UNAVAILABLE:'ENGINE_UNAVAILABLE',SIGNATURES_NOT_READY:'SIGNATURES_NOT_READY',SCANNER_NOT_READY:'HEALTH',INVALID_SCANNER_RESPONSE:'ENGINE_RESPONSE',INCOMPLETE_SCANNER_RESPONSE:'ENGINE_RESPONSE',SCAN_FAILED:'ENGINE_RESPONSE',EMPTY_FILE:'EMPTY_FILE',BODY_TOO_LARGE:'BODY_TOO_LARGE'};
-export async function scanResult(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<ScanResult>{
+async function scanAttempt(bytes:Uint8Array,sha256:string,env:EvidenceEnv,signal:AbortSignal,retry:{delayMs:number}):Promise<ScanResult>{
  const failed=(failure:ScanFailureReason):ScanResult=>({verdict:'SCAN_FAILED',failure});
  if(!env.SCANNER||!env.SCANNER_TOKEN)return failed('CONFIGURATION');
- const signal=AbortSignal.timeout(120000);
  try{
   const response=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{method:'POST',headers:{'Content-Type':'application/octet-stream',Authorization:`Bearer ${env.SCANNER_TOKEN}`},body:new Uint8Array(bytes).buffer,signal}));
   if(response.status!==200){
+   const after=response.headers.get('Retry-After');
+   if(after){const seconds=Number(after),delay=Number.isFinite(seconds)?seconds*1000:Date.parse(after)-Date.now();if(Number.isFinite(delay)&&delay>0)retry.delayMs=delay;}
    if(response.status===401){await response.body?.cancel();return failed('CREDENTIALS');}
    if(response.status===415){await response.body?.cancel();return failed('UNSUPPORTED_MEDIA_TYPE');}
    if(response.status===429){await response.body?.cancel();return failed('BUSY');}
@@ -55,6 +56,31 @@ export async function scanResult(bytes:Uint8Array,sha256:string,env:EvidenceEnv)
   return value.sha256===sha256?{verdict:value.verdict}:failed('HASH_MISMATCH');
  }catch{return failed(signal.aborted?'TIMEOUT':'CONNECTION');}
 }
+const transientScanFailures=new Set<ScanFailureReason>(['BUSY','CONNECTION','UNAVAILABLE','ENGINE_UNAVAILABLE','HEALTH','STARTUP_INSTANCE','STARTUP_PORT','STARTUP_EXIT','STARTUP_RPC']);
+function retryDelay(ms:number,signal:AbortSignal){
+ return new Promise<void>((resolve,reject)=>{
+  const abort=()=>{clearTimeout(timer);reject(signal.reason);};
+  const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},ms);
+  signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+ });
+}
+export async function scanResult(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<ScanResult>{
+ // Only the private, read-only scan is retried. Never repeat R2 writes or database mutations.
+ const signal=AbortSignal.timeout(120_000);
+ const deadline=Date.now()+120_000;
+ for(let attempt=0;attempt<3;attempt++){
+  if(signal.aborted)return {verdict:'SCAN_FAILED',failure:'TIMEOUT'};
+  const retry={delayMs:0};
+  const result=await scanAttempt(bytes,sha256,env,signal,retry);
+  if(result.verdict!=='SCAN_FAILED'||!transientScanFailures.has(result.failure)||attempt===2)return result;
+  // Equal jitter avoids synchronized callers; waits grow from 0.5–1s to 1–2s.
+  const wait=Math.max(500*2**attempt*(1+Math.random()),retry.delayMs);
+  if(wait>=deadline-Date.now())return result;
+  try{await retryDelay(wait,signal);}
+  catch{return {verdict:'SCAN_FAILED',failure:'TIMEOUT'};}
+ }
+ return {verdict:'SCAN_FAILED',failure:'UNAVAILABLE'};
+}
 export async function scanVerdict(bytes:Uint8Array,sha256:string,env:EvidenceEnv):Promise<'CLEAN'|'INFECTED'|'SCAN_FAILED'>{
  return (await scanResult(bytes,sha256,env)).verdict;
 }
@@ -70,13 +96,18 @@ async function recordScan(db:Database,actor:string,project:string,application:st
 }
 export async function upload(db:Database,actor:string,project:string,application:string,id:string,request:Request,env:EvidenceEnv){
  requireUploads(env);await roleCheck(db,actor,project,writer);
- const [rows]=await db.forActor(actor,[{query:`SELECT e.storage_key,e.status,i.expected_size,i.expected_sha256,i.expected_content_type FROM public.evidence e JOIN public.evidence_upload_intents i ON i.evidence_id=e.id WHERE e.project_id=$1 AND e.application_id=$2 AND e.id=$3 AND i.created_by=$4 AND i.expires_at>now() AND (e.status='PENDING_UPLOAD' OR (e.status='PENDING_SCAN' AND e.uploaded_at IS NULL))`,params:[project,application,id,actor]}]);
+ const [rows]=await db.forActor(actor,[{query:`SELECT e.storage_key,e.status,i.expected_size,i.expected_sha256,i.expected_content_type FROM public.evidence e JOIN public.evidence_upload_intents i ON i.evidence_id=e.id WHERE e.project_id=$1 AND e.application_id=$2 AND e.id=$3 AND i.created_by=$4 AND i.expires_at>now() AND e.status='PENDING_UPLOAD'`,params:[project,application,id,actor]}]);
  if(!rows.length)throw new HttpError(409,'UPLOAD_INTENT_UNAVAILABLE');const intent=rows[0];
  const bytes=await readBytes(request,MAX_UPLOAD);const hash=await digest(bytes);
  if(bytes.length!==Number(intent.expected_size)||hash!==intent.expected_sha256||request.headers.get('Content-Type')!==intent.expected_content_type||!validSignature(bytes,intent.expected_content_type))throw new HttpError(400,'FILE_INTEGRITY_MISMATCH');
- const [claimed]=await db.forActor(actor,[{query:`UPDATE public.evidence SET status='PENDING_SCAN',sha256=$4 WHERE project_id=$1 AND application_id=$2 AND id=$3 AND (status='PENDING_UPLOAD' OR (status='PENDING_SCAN' AND uploaded_at IS NULL AND sha256=$4)) AND ${scope(writer)} RETURNING id`,params:[project,application,id,hash]}]);
+ // This transition is the exclusive claim. An in-flight upload can never claim it again.
+ const [claimed]=await db.forActor(actor,[{query:`UPDATE public.evidence SET status='PENDING_SCAN',sha256=$4 WHERE project_id=$1 AND application_id=$2 AND id=$3 AND status='PENDING_UPLOAD' AND ${scope(writer)} RETURNING id`,params:[project,application,id,hash]}]);
  if(!claimed.length)throw new HttpError(409,'UPLOAD_ALREADY_CLAIMED');
- try{await env.EVIDENCE_BUCKET!.put(intent.storage_key,bytes,{httpMetadata:{contentType:intent.expected_content_type},customMetadata:{sha256:hash}});}catch{throw new HttpError(503,'STORAGE_UNAVAILABLE');}
+ try{await env.EVIDENCE_BUCKET!.put(intent.storage_key,bytes,{httpMetadata:{contentType:intent.expected_content_type},customMetadata:{sha256:hash}});}catch{
+  // A completed storage failure may be retried; an active upload remains exclusively claimed.
+  await db.forActor(actor,[{query:`UPDATE public.evidence SET status='PENDING_UPLOAD',sha256=NULL WHERE project_id=$1 AND application_id=$2 AND id=$3 AND status='PENDING_SCAN' AND uploaded_at IS NULL AND sha256=$4 AND ${scope(writer)}`,params:[project,application,id,hash]}]);
+  throw new HttpError(503,'STORAGE_UNAVAILABLE');
+ }
  await db.forActor(actor,[{query:"UPDATE public.evidence SET uploaded_at=now() WHERE project_id=$1 AND application_id=$2 AND id=$3 AND status='PENDING_SCAN'",params:[project,application,id]}]);
  return scanAndRecord(db,actor,project,application,id,hash,bytes,env);
 }

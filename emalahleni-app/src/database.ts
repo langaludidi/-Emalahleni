@@ -13,9 +13,10 @@ export class Database {
     // One HTTP transaction keeps actor context on the same backend; LOCAL resets it at commit.
     const results = await this.sql.transaction([
       this.sql.query("SELECT set_config('app.actor_id', $1, true)", [actor]),
+      this.sql.query("SELECT set_config('statement_timeout', '15000', true), set_config('lock_timeout', '5000', true)"),
       ...statements.map(s => this.sql.query(s.query, s.params ?? []))
-    ],readOnly?{isolationLevel:'RepeatableRead',readOnly:true}:undefined);
-    return results.slice(1) as Record<string, any>[][];
+    ],{fetchOptions:{signal:AbortSignal.timeout(20_000)},...(readOnly?{isolationLevel:'RepeatableRead',readOnly:true}:{})});
+    return results.slice(2) as Record<string, any>[][];
   }
 }
 export const writeRoles = ['ADMIN', 'OFFICER', 'FIELD_OFFICER', 'ASSESSOR', 'MANAGER'];

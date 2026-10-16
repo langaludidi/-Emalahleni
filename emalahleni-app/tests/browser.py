@@ -416,12 +416,12 @@ try:
             upload_state['retry_failure'] = 'CONNECTION'
             refresh_evidence.click()
             page.get_by_role('button', name='Retry scan', exact=True).click()
-            expect(uploader.get_by_role('alert')).to_have_text('Scan failed (CONNECTION). The file remains quarantined. Use Retry scan; if it fails again, report this code.')
+            expect(page.locator('.evidence-register').get_by_role('alert')).to_have_text('Scan failed (CONNECTION). The file remains quarantined. Use Retry scan; if it fails again, report this code.')
             assert page.locator('.evidence-register').get_by_text('applicant id · pending scan · scan failed', exact=True).is_visible()
             assert not page.get_by_text('Scanner retry completed.', exact=True).is_visible()
             upload_state['retry_failure'] = None
             page.get_by_role('button', name='Retry scan', exact=True).click()
-            uploader.get_by_text('Scanned successfully. Assessor review is still required.', exact=True).wait_for()
+            page.locator('.evidence-register').get_by_text('Scanned successfully. Assessor review is still required.', exact=True).wait_for()
             assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
             reader = page.get_by_role('region', name='Applicant ID reading', exact=True)
             read_button = reader.get_by_role('button', name='Read ID details', exact=True)
