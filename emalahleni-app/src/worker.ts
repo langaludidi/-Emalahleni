@@ -39,7 +39,7 @@ export function createHandler(authenticate: typeof actorFrom = actorFrom) {
 return async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url); const path = url.pathname;
   try {
-    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Emalahleni Beneficiary Assurance', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: uploadsConfigured(env)?'enabled':'disabled', idReading:idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
+    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Vectra Assure', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: uploadsConfigured(env)?'enabled':'disabled', idReading:idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
     if (request.method === 'GET' && path === '/storage-healthz') return json({ service: 'R2', binding: env.EVIDENCE_BUCKET ? 'configured' : 'missing', uploads: uploadsConfigured(env)?'enabled':'disabled' }, env.EVIDENCE_BUCKET ? 200 : 503);
     if (request.method === 'GET' && path === '/storage-probe') {
       if (!env.EVIDENCE_BUCKET) return json({ service: 'R2', status: 'unavailable', writeEnabled: false }, 503);

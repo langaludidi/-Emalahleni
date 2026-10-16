@@ -6,7 +6,7 @@ export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  const styles=StyleSheet.create({page:{padding:36,fontFamily:'Helvetica',fontSize:10,lineHeight:1.5},title:{fontSize:20,marginBottom:8,color:'#16322f'},draft:{fontSize:10,color:'#9a492e',marginBottom:15},heading:{fontSize:13,marginTop:16,marginBottom:6},row:{flexDirection:'row',marginBottom:5},label:{width:135,color:'#536650'},value:{flex:1},issue:{marginBottom:5},footer:{position:'absolute',bottom:20,left:36,right:36,fontSize:8,color:'#657771'}});
  const row=(label:string,value:unknown)=><View style={styles.row}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value===null||value===undefined||value===''?'Not recorded':String(value)}</Text></View>;
  const a=snapshot.form.applicant,h=snapshot.form.household,s=snapshot.form.site;
- const document=<Document title={`DRAFT - ${snapshot.reference}`} author="Emalahleni Beneficiary Assurance" subject="Draft verification summary — not submission approval">
+ const document=<Document title={`DRAFT - ${snapshot.reference} - Vectra Assure`} author="Vectra Solutions" subject="Draft verification summary — not submission approval">
  <Page size="A4" style={styles.page}><Text style={styles.title}>Beneficiary verification summary</Text><Text style={styles.draft}>{snapshot.preview?'PREVIEW — UNSAVED FORM':'DRAFT — NOT APPROVED FOR SUBMISSION'}</Text>
  {row('Case reference',snapshot.reference)}{row('Recorded version',snapshot.version)}{row('Generated (UTC)',snapshot.generatedAt)}
  <Text style={styles.heading}>Applicant and household</Text>{row('Applicant',`${a.firstNames} ${a.surname}`)}{row('ID number',a.idNumber)}{row('Contact',a.phone)}{row('Marital status',a.maritalStatus)}{a.maritalStatus==='MARRIED'&&row('Spouse',a.spouseName)}{row('Income declaration',h.incomeSource)}{row('Disability declared',a.disability?'Yes':'No')}{row('Disaster declared',a.disaster?'Yes':'No')}
@@ -16,7 +16,7 @@ export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  {snapshot.readiness.issues.map(issue=><Text key={issue.code} style={styles.issue}>{issue.owner==='DOHS'?'DoHS':'Our team'}: {issue.message}</Text>)}
  <Text style={styles.heading}>Evidence register</Text>{snapshot.evidence.length?snapshot.evidence.map(e=><Text key={e.id} style={styles.issue}>{e.filename} · {e.kind} · {e.status} · scan {e.malware_status}{e.reviewed_by?` · reviewer ${e.reviewed_by}`:''}</Text>):<Text>No supporting evidence recorded.</Text>}
  <Text style={styles.heading}>DoHS section decisions</Text>{snapshot.reviews.length?snapshot.reviews.map(r=><Text key={r.section} style={styles.issue}>{r.section}: {r.state} · {r.note}</Text>):<Text>No departmental decisions recorded.</Text>}
- <Text fixed style={styles.footer} render={({pageNumber,totalPages})=>`Emalahleni · Draft verification summary · Page ${pageNumber} of ${totalPages}`}/>
+ <Text fixed style={styles.footer} render={({pageNumber,totalPages})=>`Vectra Assure by Vectra Solutions · Draft verification summary · Page ${pageNumber} of ${totalPages}`}/>
  </Page></Document>;
  return pdf(document).toBlob();
 }
@@ -24,7 +24,7 @@ export async function draftPack(snapshot:ExportSnapshot,getFile:(id:string)=>Pro
  if(snapshot.preview)throw Error('Save and load a recorded case before generating an evidence pack.');
  const evidence=packEvidence(snapshot.evidence);if(evidence.length>20)throw Error('This draft pack exceeds the 20-document export limit.');
  const {PDFDocument,PDFName}=await import('pdf-lib');const result=await PDFDocument.create();
- result.setTitle(`DRAFT - ${snapshot.reference}`);result.setSubject('Draft verification pack — not approved for submission');
+ result.setTitle(`DRAFT - ${snapshot.reference} - Vectra Assure`);result.setAuthor('Vectra Solutions');result.setSubject('Draft verification pack — not approved for submission');
  const summary=await PDFDocument.load(await (await summaryPdf(snapshot)).arrayBuffer());for(const page of await result.copyPages(summary,summary.getPageIndices()))result.addPage(page);
  let size=0;
  for(const e of evidence){

@@ -1,4 +1,6 @@
-# Emalahleni beneficiary assurance — development build
+# Vectra Assure — development build
+
+Vectra Assure is a platform by **Vectra Solutions** for evidence management, beneficiary verification and project readiness across projects. The product branding is independent of project names. Existing GitHub, Vercel, Cloudflare, database, storage and package identifiers retain their original names; saved data and encryption contexts are unchanged.
 
 This build implements the four-step verification form, conditional evidence requirements, encrypted draft storage, project-scoped authenticated API access, version checks, private evidence upload and scanning controls, assessor review, and the DoHS section workspace.
 
