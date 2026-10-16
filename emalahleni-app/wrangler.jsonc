@@ -12,9 +12,9 @@
   "exports": { "DocumentScanner": { "type": "durable-object", "storage": "sqlite", "container": "emalahleni-scanner-staging-documentscanner" } },
   "containers": [{ "name": "emalahleni-scanner-staging-documentscanner", "class_name": "DocumentScanner", "image": "./scanner/Dockerfile", "image_build_context": "./scanner", "max_instances": 1, "instance_type": "standard-1", "observability": { "enabled": true } }],
   "ratelimits": [
-    { "name": "API_RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
-    { "name": "WRITE_RATE_LIMITER", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
-    { "name": "DOCUMENT_RATE_LIMITER", "namespace_id": "1003", "simple": { "limit": 12, "period": 60 } }
+    { "name": "API_RATE_LIMITER", "namespace_id": "2026101601", "simple": { "limit": 120, "period": 60 } },
+    { "name": "WRITE_RATE_LIMITER", "namespace_id": "2026101602", "simple": { "limit": 30, "period": 60 } },
+    { "name": "DOCUMENT_RATE_LIMITER", "namespace_id": "2026101603", "simple": { "limit": 12, "period": 60 } }
   ],
   "vars": {
     "ENABLE_API_RATE_LIMITS": "true",

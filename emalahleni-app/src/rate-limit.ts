@@ -9,7 +9,7 @@ export interface RateLimitEnv {
 async function check(binding:RateLimit|undefined,scope:string,identity:string){
  if(!binding)throw new HttpError(503,'RATE_LIMIT_SERVICE_UNAVAILABLE');
  // Never use caller-selected object keys, raw bearer tokens or personal details as keys.
- const bytes=new TextEncoder().encode(`${scope}:${identity}`);
+ const bytes=new TextEncoder().encode(`emalahleni-api-staging:${scope}:${identity}`);
  const key=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
  let allowed:boolean;
  try{allowed=(await binding.limit({key})).success;}catch{throw new HttpError(503,'RATE_LIMIT_SERVICE_UNAVAILABLE');}
