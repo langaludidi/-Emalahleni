@@ -11,6 +11,7 @@ import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-documen
 import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
 import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
+import { readProjectDashboard } from './dashboard';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -64,6 +65,12 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     await limitActorAction(request,env,actor);
     const db = new Database(env.DATABASE_URL);
+    // Isolated read-only reporting route; existing capture routes remain unchanged.
+    const dashboardRoute = path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
+    if (dashboardRoute) {
+      if (request.method !== 'GET') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
+      return json(await readProjectDashboard(db, actor, z.uuid().parse(dashboardRoute[1]), env.FORM_ENCRYPTION_KEY));
+    }
     const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
     if(serviceProbe){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
