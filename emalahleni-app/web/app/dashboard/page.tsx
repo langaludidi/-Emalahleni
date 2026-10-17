@@ -5,7 +5,7 @@ import { createAuthClient } from '@neondatabase/auth';
 import type { DashboardResponse, DashboardApplication, HistoricalSnapshot } from '../../../src/dashboard';
 import './dashboard.css';
 
-const auth = createAuthClient('https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth');
+const authUrl = 'https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth';
 type ProjectOption = { id:string; name:string; code:string; role:string };
 type Filters = { search:string; workflow:string; readiness:string; gps:string };
 const initialFilters:Filters = {search:'',workflow:'ALL',readiness:'ALL',gps:'ALL'};
@@ -52,6 +52,7 @@ function HistoricalKpis({snapshot}:{snapshot:HistoricalSnapshot}) {
   </>;
 }
 export default function ProjectDashboard() {
+  const [auth] = useState(() => createAuthClient(authUrl));
   const [projects,setProjects]=useState<ProjectOption[]>([]);
   const [projectId,setProjectId]=useState('');
   const [data,setData]=useState<DashboardResponse|null>(null);
