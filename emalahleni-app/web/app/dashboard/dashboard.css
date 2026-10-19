@@ -73,3 +73,12 @@
 .dashboard-report-grid button{padding:10px 12px}
 @media(max-width:800px){.dashboard-gps-layout{grid-template-columns:1fr}.dashboard-report-grid{grid-template-columns:1fr}}
 @media print{.dashboard-header nav,.dashboard-controls,.dashboard-filters,.dashboard-pager,button{display:none!important}.dashboard-main{max-width:none;padding:0}.dashboard-card{break-inside:avoid;box-shadow:none}.dashboard-table-scroll{overflow:visible}.dashboard-map-placeholder{min-height:80px}}
+
+.dashboard-trend-table{border:1px solid #d8e3ed;border-radius:10px;overflow:hidden;font-size:12px}
+.dashboard-trend-table>div{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:8px;padding:11px 15px;border-bottom:1px solid #e8eef4}
+.dashboard-trend-table>div:last-child{border-bottom:0}
+.dashboard-trend-heading{background:#f1f6f9;font-weight:700}
+.dashboard-trend-rows{margin-top:20px}
+.dashboard-trend-row{display:grid;grid-template-columns:140px 1fr;gap:16px;align-items:center;font-size:12px}
+.dashboard-trend-row .dashboard-bar{margin:10px 0}
+@media(max-width:700px){.dashboard-trend-row{grid-template-columns:95px 1fr}.dashboard-trend-table>div{padding:9px 6px;gap:4px;font-size:10px}}
