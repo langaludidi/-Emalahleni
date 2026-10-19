@@ -15,7 +15,7 @@ import { readProjectDashboard } from './dashboard';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
-  NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
+  NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string; PREVIEW_MODE?: string;
 }
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
@@ -59,8 +59,8 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       if (request.method !== 'GET' && request.method !== 'HEAD') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: 'NOT_FOUND' }, 404);
     }
-    // Case and evidence access remain gated until deployment configuration is complete.
-    if (env.ENABLE_CASE_API !== 'true' || !env.DATABASE_URL || !env.FORM_ENCRYPTION_KEY) throw new HttpError(503, 'CASE_API_NOT_CONFIGURED');
+    // Isolated preview never permits writes or document access, even if a secret is accidentally configured.\n    if (env.PREVIEW_MODE === 'true' && (request.method !== 'GET' || !/^\\/api\\/projects\\/[0-9a-f-]+\\/dashboard$/i.test(path))) throw new HttpError(403, 'PREVIEW_READ_ONLY');\n    // Case and evidence access remain gated until deployment configuration is complete.
+    if ((env.ENABLE_CASE_API !== 'true' && env.PREVIEW_MODE !== 'true') || !env.DATABASE_URL || !env.FORM_ENCRYPTION_KEY) throw new HttpError(503, 'CASE_API_NOT_CONFIGURED');
     let actor: string;
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     await limitActorAction(request,env,actor);
