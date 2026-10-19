@@ -132,6 +132,25 @@ export default function ProjectDashboard() {
         <p className="dashboard-subnote">Live Red/Amber findings are provisional until the 63-rule workbook reconciliation is approved. No live Green/submission approval is issued. The snapshot figures above are not mixed into these totals.</p>
         {data.truncated&&<div className="dashboard-alert" role="status">This project exceeds the {data.limit}-record reporting limit. Total/draft counts cover the project, but register filtering and GPS/readiness counts require a paginated reporting upgrade. Nothing is omitted from the capture database.</div>}
       </section>
+      <section className="dashboard-card" aria-labelledby="priorities-title">
+        <div className="dashboard-section-heading">
+          <div><p className="dashboard-eyebrow">VERIFICATION WORK QUEUE · READ-ONLY</p><h2 id="priorities-title">Items requiring attention</h2></div>
+          <span className="dashboard-count">Derived from current captured records</span>
+        </div>
+        {data.live.fullyEnumerated ? <>
+          <div className="dashboard-support-kpis">
+            <div><small>Records with blockers</small><strong>{data.applications.filter(row=>row.blockerCount>0).length}</strong></div>
+            <div><small>Records needing review</small><strong>{data.applications.filter(row=>row.reviewCount>0).length}</strong></div>
+            <div><small>GPS not entered</small><strong>{data.applications.filter(row=>row.gpsStatus==='NOT_CAPTURED').length}</strong></div>
+            <div><small>Provisional red</small><strong>{data.live.readiness?.RED??'—'}</strong></div>
+          </div>
+          <p className="dashboard-subnote">These are work-queue indicators, not department approval decisions. Select a matching register filter below to inspect references.</p>
+          <div className="dashboard-pager">
+            <button className="secondary" onClick={()=>{setFilters({...initialFilters,readiness:'RED'});setPage(1);document.getElementById('register-title')?.scrollIntoView({behavior:'smooth'});}}>View red cases</button>
+            <button className="secondary" onClick={()=>{setFilters({...initialFilters,gps:'NOT_CAPTURED'});setPage(1);document.getElementById('register-title')?.scrollIntoView({behavior:'smooth'});}}>View missing GPS</button>
+          </div>
+        </> : <div className="dashboard-alert" role="status">Project-level work-queue statistics are unavailable because this dashboard has only loaded a partial register. Use the application capture workspace until server-side reporting pagination is implemented.</div>}
+      </section>
       <section className="dashboard-card" aria-labelledby="register-title">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">PROJECT REGISTER · READ-ONLY</p><h2 id="register-title">Applications register</h2></div><span className="dashboard-count">{rows.length} displayed of {data.live.total} live applications</span></div>
         <div className="dashboard-filters">
