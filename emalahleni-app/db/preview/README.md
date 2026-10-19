@@ -53,9 +53,9 @@ These are **database-level** checks, not HTTP tests against a deployed Worker or
 
 ## Blockers before a working URL
 
-- Configure isolated Neon Auth and reserved-domain synthetic sign-in identities; do not reuse staging authentication.
-- Provision and verify preview-only Cloudflare bindings, secrets, rate limits, R2 and scanner resources.
+- Independent Neon Auth has been provisioned; configure preview-only permitted identities and a trusted origin, without reusing staging authentication.
+- Provision Cloudflare Worker secrets and preview-specific rate limits. R2 and scanner bindings are deliberately absent from this read-only preview.
 - Establish a safe preview-only login credential for the restricted worker, with no privilege escalation, and supply the **test-only** encryption key through Cloudflare Worker secrets. Never commit credentials or the key.
-- Verify authenticated GET dashboard, cross-project denial, response PII exclusion, all mutation denials and scanner/upload inactivity on actual preview host.
+- Verify authenticated GET dashboard, cross-project denial, response PII exclusion and all mutation/upload denials on the actual preview host.
 - Re-run both GitHub checks on the latest feature branch head; **do not merge to main**.
 - No live DoHS approvals or GPS/site verification have been established.
