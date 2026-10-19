@@ -22,3 +22,17 @@ The preview config is `wrangler.preview.jsonc`. It is **not deployed** by commit
 6. Share preview URL only after all smoke tests pass.
 
 No DoHS submission approvals or verified geographic maps are included.
+
+## Provisioning record — 19 October 2026
+
+An independent Neon project **Vectra Assure Preview** was created:
+
+- Project ID: `noisy-pond-49029240` (AWS London, PostgreSQL 18)
+- Branch: `br-gentle-lab-zab9t10k` (`preview/synthetic-only`)
+- Database: `vectra_preview`
+- No staging records were copied. The database initially had zero public application tables.
+- The latest preview access-control fix `a381946` passed dashboard and scanner CI. Subsequent commits require their own checks.
+
+**Schema migration blocked:** do not invent a partial schema. Locate the original version-controlled SQL migrations and apply them to the empty preview database after reviewing roles and RLS policies. The original staging branch is `br-withered-sun-za5qurkv` in project `summer-cell-31554288`, and must not be modified for preview work. Do not use a staging clone as a shortcut.
+
+**Operational blockers:** isolated Neon Auth, restricted `emalahleni_worker` role, reviewed schema, fictional memberships/cases, separate R2 bucket, Cloudflare preview secrets, end-to-end acceptance. No preview Worker is deployed.
