@@ -36,3 +36,16 @@ An independent Neon project **Vectra Assure Preview** was created:
 **Schema migration blocked:** do not invent a partial schema. Locate the original version-controlled SQL migrations and apply them to the empty preview database after reviewing roles and RLS policies. The original staging branch is `br-withered-sun-za5qurkv` in project `summer-cell-31554288`, and must not be modified for preview work. Do not use a staging clone as a shortcut.
 
 **Operational blockers:** isolated Neon Auth, restricted `emalahleni_worker` role, reviewed schema, fictional memberships/cases, separate R2 bucket, Cloudflare preview secrets, end-to-end acceptance. No preview Worker is deployed.
+
+## Schema recovery checklist (read-only)
+
+The repository's searchable default branch does not expose a complete SQL migration history. Before attempting any database schema changes:
+
+1. Inspect the original migration source used to create staging, including version numbers, extensions, table constraints, triggers, functions, indexes, grants and row-level security policies. Do not infer the schema from dashboard queries.
+2. Compare that source against the current staging schema without exporting application rows or credentials. Record drift and resolve it in reviewed migrations.
+3. Review role ownership and `emalahleni_worker` grants. The Worker requires a restricted login with RLS enforced and no database ownership or bypass privileges.
+4. Apply approved, idempotent migrations only to project `noisy-pond-49029240`, database `vectra_preview`. Do not run them against `summer-cell-31554288`.
+5. Verify policies for unauthenticated, unassigned, other-project and read-only identities before seeding any fictional data.
+6. Keep the preview Worker disabled until authentication and isolated secrets are configured and security acceptance passes.
+
+This checklist is documentation only; it does not create roles, tables, identities or records.
