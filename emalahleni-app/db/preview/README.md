@@ -37,7 +37,7 @@ Only fictional data was seeded using owner-only access:
 - 5 fictional applications with separate preview-only AES-256-GCM encrypted forms (3 Alpha, 2 Beta)
 - No real beneficiary IDs, phone numbers, uploads or coordinates
 
-Independent Python AES-GCM round-trip on the exact ciphertext format: **5/5 PASS**.
+Independent Python AES-GCM round-trip on the exact ciphertext format: **5/5 PASS**. The original ephemeral key was not retained as a deployable Worker secret. **Before HTTP testing, generate a fresh preview-only key, run the guarded fixture seeder with `--apply --rotate-key` against the exact isolated preview owner URL, and configure that same key as a Cloudflare preview secret.** The `--rotate-key` option changes only ciphertext on matching synthetic fixture IDs and project/reference pairs; it does not rotate real application records.
 
 Controlled role-switch database tests, with temporary owner membership revoked immediately afterward:
 
@@ -55,7 +55,7 @@ These are **database-level** checks, not HTTP tests against a deployed Worker or
 
 - Independent Neon Auth has been provisioned; configure preview-only permitted identities and a trusted origin, without reusing staging authentication.
 - Provision Cloudflare Worker secrets and preview-specific rate limits. R2 and scanner bindings are deliberately absent from this read-only preview.
-- Establish a safe preview-only login credential for the restricted worker, with no privilege escalation, and supply the **test-only** encryption key through Cloudflare Worker secrets. Never commit credentials or the key.
+- Establish a safe preview-only login credential for the restricted worker, with no privilege escalation. Rotate the five synthetic fixture ciphertexts with `node db/preview/seed-fictional.mjs --apply --rotate-key` and supply the **same test-only** encryption key through Cloudflare Worker secrets. Never commit credentials or the key.
 - Verify authenticated GET dashboard, cross-project denial, response PII exclusion and all mutation/upload denials on the actual preview host.
 - Re-run both GitHub checks on the latest feature branch head; **do not merge to main**.
 - No live DoHS approvals or GPS/site verification have been established.
