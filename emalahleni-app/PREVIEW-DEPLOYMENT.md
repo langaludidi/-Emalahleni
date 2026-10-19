@@ -4,11 +4,11 @@ The preview config is `wrangler.preview.jsonc`. It is **not deployed** by commit
 
 ## Safety preconditions
 
-- Provision `emalahleni-assure-preview-evidence` as a new R2 bucket. Never point it to the staging evidence bucket.
+- Dashboard-only preview intentionally has **no R2 bucket or scanner container binding**. All uploads, evidence downloads, document routes and case mutations must be denied; never reuse staging resources.
 - Provision a **separate Neon database and auth project with synthetic accounts only**. Set its database URL and encryption secret through preview Worker secrets, never GitHub files.
 - Do not copy staging or production credentials, encryption keys, beneficiary records or storage objects.
 - Preview configuration disables case API, uploads and ID reading. Verify these flags are enforced by runtime before exposing the host. If not, block deployment and add enforcement.
-- Ensure the preview scanner container has separate resources and access.
+- The preview does **not** run a scanner. A future evidence-enabled preview would require separately provisioned R2/scanner resources and a new security review.
 - Configure preview-only authentication endpoints after provisioning; do not reuse staging auth.
 - Keep preview access limited to approved testers and synthetic cases.
 
@@ -16,7 +16,7 @@ The preview config is `wrangler.preview.jsonc`. It is **not deployed** by commit
 
 1. Re-run dashboard and scanner CI on the **latest head SHA** after preview configuration changes.
 2. Validate Worker dry-run using `npx wrangler deploy --config wrangler.preview.jsonc --dry-run --containers-rollout=none`.
-3. Confirm isolated R2, Neon and auth exist and that secrets are set.
+3. Confirm isolated Neon and Neon Auth exist, restricted Worker login and secrets are configured, and no R2/scanner binding is present.
 4. Deploy explicitly from `emalahleni-app`: `npx wrangler deploy --config wrangler.preview.jsonc`. **Never** use `npm run deploy` for preview.
 5. Test login, role/project isolation, dashboard PII redaction, blocked case writes, blocked uploads, and scanner health with synthetic data.
 6. Share preview URL only after all smoke tests pass.
@@ -37,7 +37,7 @@ An independent Neon project **Vectra Assure Preview** was created:
 
 **Implemented:** restricted `emalahleni_worker` NOLOGIN role (no bypass-RLS or role/db creation), scoped reader grants, two fictional projects and five AES-GCM encrypted fictional applications. Alpha/Beta/unassigned access isolation tests passed. The test-only encryption key is not committed.
 
-**Operational blockers:** isolated Neon Auth, safely enabling preview-only worker credentials, preview-specific R2/scanner/rate-limit bindings, Cloudflare Worker secrets and deployment, authenticated end-to-end smoke tests and latest-head CI. No preview Worker is deployed.
+**Operational blockers:** safely enabling preview-only worker credentials, preview-specific Cloudflare rate-limit bindings, Worker secrets and deployment, auth trusted origin, authenticated end-to-end smoke tests and latest-head CI. Neon Auth is now isolated and configured. The read-only preview intentionally does not bind R2 or scanner. No preview Worker is deployed.
 
 ## Schema recovery checklist (read-only)
 
