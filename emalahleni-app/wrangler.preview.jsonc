@@ -19,37 +19,6 @@
       "/storage-probe"
     ]
   },
-  "r2_buckets": [
-    {
-      "binding": "EVIDENCE_BUCKET",
-      "bucket_name": "emalahleni-assure-preview-evidence"
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "SCANNER_CONTAINER",
-        "class_name": "DocumentScanner"
-      }
-    ]
-  },
-  "exports": {
-    "DocumentScanner": {
-      "type": "durable-object",
-      "storage": "sqlite",
-      "container": "emalahleni-assure-preview-scanner"
-    }
-  },
-  "containers": [
-    {
-      "name": "emalahleni-assure-preview-scanner",
-      "class_name": "DocumentScanner",
-      "image": "./scanner/Dockerfile",
-      "image_build_context": "./scanner",
-      "max_instances": 1,
-      "instance_type": "standard-1"
-    }
-  ],
   "ratelimits": [
     {
       "name": "API_RATE_LIMITER",
