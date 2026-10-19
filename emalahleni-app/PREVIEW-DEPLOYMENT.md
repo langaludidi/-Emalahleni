@@ -33,9 +33,11 @@ An independent Neon project **Vectra Assure Preview** was created:
 - No staging records were copied. The database initially had zero public application tables.
 - The latest preview access-control fix `a381946` passed dashboard and scanner CI. Subsequent commits require their own checks.
 
-**Schema migration blocked:** do not invent a partial schema. Locate the original version-controlled SQL migrations and apply them to the empty preview database after reviewing roles and RLS policies. The original staging branch is `br-withered-sun-za5qurkv` in project `summer-cell-31554288`, and must not be modified for preview work. Do not use a staging clone as a shortcut.
+**Dashboard-only schema bootstrapped:** seven tables, staging-derived constraints/indexes, the DoHS field guard, FORCED RLS and read-only SQL-created roles are installed in the isolated preview. See `db/preview/README.md` and `01`–`04` bootstrap scripts. This does **not** reproduce the full capture/evidence/scanner schema and must not be treated as release-ready. The original staging branch is `br-withered-sun-za5qurkv` in project `summer-cell-31554288` and was read-only during recovery.
 
-**Operational blockers:** isolated Neon Auth, restricted `emalahleni_worker` role, reviewed schema, fictional memberships/cases, separate R2 bucket, Cloudflare preview secrets, end-to-end acceptance. No preview Worker is deployed.
+**Implemented:** restricted `emalahleni_worker` NOLOGIN role (no bypass-RLS or role/db creation), scoped reader grants, two fictional projects and five AES-GCM encrypted fictional applications. Alpha/Beta/unassigned access isolation tests passed. The test-only encryption key is not committed.
+
+**Operational blockers:** isolated Neon Auth, safely enabling preview-only worker credentials, preview-specific R2/scanner/rate-limit bindings, Cloudflare Worker secrets and deployment, authenticated end-to-end smoke tests and latest-head CI. No preview Worker is deployed.
 
 ## Schema recovery checklist (read-only)
 
