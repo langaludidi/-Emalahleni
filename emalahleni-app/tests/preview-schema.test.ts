@@ -59,3 +59,26 @@ test('dashboard-only Worker config never binds evidence or scanner resources', (
   assert.equal(Object.hasOwn(preview.vars, 'DATABASE_URL'), false);
   assert.equal(Object.hasOwn(preview.vars, 'FORM_ENCRYPTION_KEY'), false);
 });
+
+test('preview connection must use restricted worker identity and never the database owner', async () => {
+  const { Database } = await import('../src/database');
+  const base='postgresql://';
+  for (const username of ['vectra_preview_owner','neondb_owner','postgres','vectra_preview_reader']) {
+    assert.throws(() => new Database(base+username+':fake@ep-example.neon.tech/vectra_preview?sslmode=require'), /DATABASE_UNCONFIGURED/);
+  }
+  assert.throws(() => new Database(base+'emalahleni_worker:fake@ep-example.neon.tech/neondb?sslmode=disable'), /DATABASE_UNCONFIGURED/);
+});
+
+test('preview Worker keeps fail-closed route allowlist and synthetic-only mode', async () => {
+  const { createHandler } = await import('../src/worker');
+  const preview = JSON.parse(readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8'));
+  const handler = createHandler(async () => 'synthetic:test:alpha-manager');
+  const env = {...preview.vars};
+  const url='https://preview.invalid';
+  const mutation=await handler(new Request(url+'/api/projects/22222222-2222-4222-8222-222222222221/dashboard',{method:'POST'}), env);
+  assert.equal(mutation.status,403);
+  const documents=await handler(new Request(url+'/api/documents/synthetic'),env);
+  assert.equal(documents.status,403);
+  const previewCalc=await handler(new Request(url+'/api/preview',{method:'POST',body:'{}'}),env);
+  assert.equal(previewCalc.status,403);
+});
