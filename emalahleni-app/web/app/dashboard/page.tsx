@@ -52,8 +52,8 @@ function HistoricalKpis({snapshot}:{snapshot:HistoricalSnapshot}) {
   </>;
 }
 function csvCell(value:unknown):string { return '"'+String(value??'').replaceAll('"','""')+'"'; }
-function exportDashboardCsv(data:DashboardResponse, kind:'register'|'summary', snapshot?:HistoricalSnapshot) {
-  const rows:(string|number|boolean|null)[][]=kind==='register'
+function exportDashboardCsv(data:DashboardResponse, kind:'register'|'summary'|'exceptions', snapshot?:HistoricalSnapshot) {
+  const rows:(string|number|boolean|null)[][]=kind==='exceptions' ? [['Project','Reference','Provisional readiness','Blockers','Reviews','GPS entry','Updated','Register complete'],...data.applications.filter(row=>row.blockerCount>0||row.reviewCount>0||row.gpsStatus==='NOT_CAPTURED').map(row=>[data.project.code,row.reference,row.readiness,row.blockerCount,row.reviewCount,row.gpsStatus,row.updatedAt,data.live.fullyEnumerated])] : kind==='register'
     ? [['Project','Reference','Workflow','Provisional readiness','Blockers','Reviews','GPS entry','Updated','Register complete'],
        ...data.applications.map(row=>[data.project.code,row.reference,row.workflowStatus,row.readiness,row.blockerCount,row.reviewCount,row.gpsStatus,row.updatedAt,data.live.fullyEnumerated])]
     : [['Metric','Value'],['Project',data.project.code],['Generated at',data.generatedAt],['Applications',data.live.total],['Drafts',data.live.drafts],['Returned',data.live.returned],['GPS entered',data.live.gpsCaptured],['Register complete',data.live.fullyEnumerated],['Provisional readiness','Yes'],['Historical snapshot',snapshot?.assessmentDate??'None'],['Historical assessed applications',snapshot?.applications??''],['Historical red',snapshot?.red??''],['Historical amber',snapshot?.amber??''],['Historical green',snapshot?.green??''],['Field-plan sites',snapshot?.fieldPlanSites??''],['Field-plan GPS captured',snapshot?.fieldPlanGpsCaptured??''],['Field-plan GPS outstanding',snapshot?.fieldPlanGpsOutstanding??'']];
@@ -203,6 +203,7 @@ export default function ProjectDashboard() {
         <div className="dashboard-report-grid">
           <div><strong>Applications register</strong><p>References, workflow, provisional readiness, blocker counts and GPS entry status.</p><button className="secondary" onClick={()=>exportDashboardCsv(data,'register')}>Export register CSV</button></div>
           <div><strong>Project summary</strong><p>Current database totals, completeness limitations and selected historical baseline.</p><button className="secondary" onClick={()=>exportDashboardCsv(data,'summary',snapshot)}>Export summary CSV</button></div>
+          <div><strong>Exceptions schedule</strong><p>Applications with blockers, review findings or missing GPS entries. Counts are provisional and may be partial.</p><button className="secondary" onClick={()=>exportDashboardCsv(data,'exceptions')}>Export exceptions CSV</button></div>
           <div><strong>Print-friendly report</strong><p>Use the browser print dialog to save the dashboard as a PDF.</p><button className="secondary" onClick={()=>window.print()}>Print / Save PDF</button></div>
         </div>
         <p className="dashboard-subnote">Exports contain no names, ID numbers, documents or precise coordinates. If the register is truncated, the CSV is explicitly labelled partial. This is an interim reporting feature, not the final server-generated official report.</p>
