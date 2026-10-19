@@ -11,10 +11,11 @@ import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-documen
 import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
 import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
+import { readProjectDashboard } from './dashboard';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
-  NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
+  NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string; PREVIEW_MODE?: string;
 }
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
@@ -41,13 +42,14 @@ return async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url); const path = url.pathname;
   try {
     if(path.startsWith('/api/'))await limitPublicApi(request,env);
-    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Vectra Assure', status: 'operational', caseApi: env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: uploadsConfigured(env)?'enabled':'disabled', idReading:idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
+    if (request.method === 'GET' && path === '/healthz') return json({ application: 'Vectra Assure', status: 'operational', caseApi: env.PREVIEW_MODE === 'true' ? 'read-only-dashboard' : env.ENABLE_CASE_API === 'true' ? 'enabled' : 'disabled', documentUploads: env.PREVIEW_MODE === 'true' ? 'disabled' : uploadsConfigured(env)?'enabled':'disabled', idReading:env.PREVIEW_MODE === 'true' ? 'disabled' : idReadingConfigured(env)?'enabled':'disabled',mode: 'synthetic-only' });
     if (request.method === 'GET' && path === '/storage-healthz') return json({ service: 'R2', binding: env.EVIDENCE_BUCKET ? 'configured' : 'missing', uploads: uploadsConfigured(env)?'enabled':'disabled' }, env.EVIDENCE_BUCKET ? 200 : 503);
     if (request.method === 'GET' && path === '/storage-probe') {
       if (!env.EVIDENCE_BUCKET) return json({ service: 'R2', status: 'unavailable', writeEnabled: false }, 503);
       try { const object = await env.EVIDENCE_BUCKET.head('__preflight__/synthetic-probe'); return json({ service: 'R2', status: 'reachable', syntheticProbeObjectPresent: object !== null, writeEnabled: false }); }
       catch { return json({ service: 'R2', status: 'unavailable', writeEnabled: false }, 503); }
     }
+    if (env.PREVIEW_MODE === 'true' && path.startsWith('/api/') && (request.method !== 'GET' || !/^\/api\/projects\/[0-9a-f-]+\/dashboard$/i.test(path))) throw new HttpError(403, 'PREVIEW_READ_ONLY');
     // Browser preview calculations are advisory; evidence is never accepted from this endpoint.
     if (path === '/api/preview') {
       if (request.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
@@ -58,12 +60,18 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       if (request.method !== 'GET' && request.method !== 'HEAD') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
       return env.ASSETS ? env.ASSETS.fetch(request) : json({ error: 'NOT_FOUND' }, 404);
     }
-    // Case and evidence access remain gated until deployment configuration is complete.
-    if (env.ENABLE_CASE_API !== 'true' || !env.DATABASE_URL || !env.FORM_ENCRYPTION_KEY) throw new HttpError(503, 'CASE_API_NOT_CONFIGURED');
+    // The preview-only API allowlist is enforced above before route dispatch.
+    if ((env.ENABLE_CASE_API !== 'true' && env.PREVIEW_MODE !== 'true') || !env.DATABASE_URL || !env.FORM_ENCRYPTION_KEY) throw new HttpError(503, 'CASE_API_NOT_CONFIGURED');
     let actor: string;
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     await limitActorAction(request,env,actor);
     const db = new Database(env.DATABASE_URL);
+    // Isolated read-only reporting route; existing capture routes remain unchanged.
+    const dashboardRoute = path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
+    if (dashboardRoute) {
+      if (request.method !== 'GET') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
+      return json(await readProjectDashboard(db, actor, z.uuid().parse(dashboardRoute[1]), env.FORM_ENCRYPTION_KEY));
+    }
     const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
     if(serviceProbe){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');

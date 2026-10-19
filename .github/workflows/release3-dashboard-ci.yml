@@ -1,0 +1,38 @@
+name: Release 3 dashboard checks
+on:
+  pull_request:
+    paths:
+      - 'emalahleni-app/**'
+      - '.github/workflows/release3-dashboard-ci.yml'
+  push:
+    branches:
+      - feature/project-dashboard-readonly
+    paths:
+      - 'emalahleni-app/**'
+      - '.github/workflows/release3-dashboard-ci.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Install private scanner dependencies
+        run: npm --prefix scanner install --ignore-scripts --no-audit --no-fund
+      - name: Typecheck backend and frontend
+        run: npm run typecheck
+      - name: Unit and regression tests
+        run: npm test
+      - name: Frontend and Worker dry-run build
+        run: npm run build
+      - name: Isolated preview Worker dry-run (no deployment)
+        run: npx wrangler deploy --config wrangler.preview.jsonc --dry-run --containers-rollout=none

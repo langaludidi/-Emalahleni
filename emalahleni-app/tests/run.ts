@@ -5,3 +5,6 @@ import './id-document.test.ts';
 import './document-service-probe.test.ts';
 import './features.test.ts';
 import './reliability.test.ts';
+
+import './dashboard.test.ts';
+import './preview-schema.test.ts';
