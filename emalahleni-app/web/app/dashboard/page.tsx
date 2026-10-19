@@ -185,6 +185,19 @@ export default function ProjectDashboard() {
           </div>
         </> : <p className="dashboard-subnote">No approved GPS historical reference is associated with this project.</p>}
       </section>
+      <section className="dashboard-card" aria-labelledby="trend-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">HISTORICAL PROGRESS · WORKBOOK SNAPSHOTS</p><h2 id="trend-title">Readiness movement</h2></div><span className="dashboard-count">Historical assessment, not live approvals</span></div>
+        {data.historicalSnapshots.length>1 ? <>
+          <div className="dashboard-trend-table" role="table" aria-label="Historical readiness trend">
+            <div role="row" className="dashboard-trend-heading"><span role="columnheader">Assessment date</span><span role="columnheader">Red</span><span role="columnheader">Amber</span><span role="columnheader">Green</span><span role="columnheader">Assessed</span></div>
+            {data.historicalSnapshots.map(item=><div role="row" key={item.id}><span role="cell">{dateLabel(item.assessmentDate)}</span><span role="cell">{item.red}</span><span role="cell">{item.amber}</span><span role="cell">{item.green}</span><span role="cell">{item.applications}</span></div>)}
+          </div>
+          <div className="dashboard-trend-rows">
+            {data.historicalSnapshots.map(item=><div key={item.id} className="dashboard-trend-row"><span>{dateLabel(item.assessmentDate)}</span><div className="dashboard-bar" role="img" aria-label={item.red+' red, '+item.amber+' amber, '+item.green+' green'}><span className="dashboard-bar-red" style={{width:(100*item.red/item.applications)+'%'}}/><span className="dashboard-bar-amber" style={{width:(100*item.amber/item.applications)+'%'}}/><span className="dashboard-bar-green" style={{width:(100*item.green/item.applications)+'%'}}/></div></div>)}
+          </div>
+          <p className="dashboard-subnote">Movement between assessment snapshots is historical, not evidence of a beneficiary approval. These snapshots are currently source-coded and require a controlled import workflow before automated reporting.</p>
+        </> : <p className="dashboard-subnote">At least two approved historical snapshots are required to show movement.</p>}
+      </section>
       <section className="dashboard-card" aria-labelledby="reporting-title">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPORTING · CLIENT-SIDE EXPORT</p><h2 id="reporting-title">Management reports</h2></div><span className="dashboard-count">Safe project summaries only</span></div>
         <div className="dashboard-report-grid">
