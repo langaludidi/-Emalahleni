@@ -37,6 +37,9 @@ export interface DashboardApplication {
   reviewCount: number;
   gpsStatus: 'CAPTURED_UNVERIFIED' | 'NOT_CAPTURED';
   findings: { code:string; severity:'BLOCKER'|'REVIEW'; owner:string }[];
+  evidence: { total:number; verified:number; pending:number; required:number };
+  submission: { eligible:false; provisional:true; outstanding:number };
+  geography: { coordinatesEntered:boolean; verifiedSite:false; wardMapped:false };
 }
 export interface DashboardResponse {
   project: { id: string; name: string; code: string; role: string };
@@ -158,6 +161,9 @@ export async function readProjectDashboard(
       workflowStatus: String(r.workflow_status),
       updatedAt: new Date(String(r.updated_at)).toISOString(),
       readiness: result.readiness,
+      evidence: {total:(evidenced.get(applicationId)??[]).length,verified:(evidenced.get(applicationId)??[]).filter(e=>e.status==='VERIFIED'&&e.malware_status==='CLEAN'&&!!e.reviewed_by&&!!e.reviewed_at).length,pending:(evidenced.get(applicationId)??[]).filter(e=>e.status!=='VERIFIED'||e.malware_status!=='CLEAN'||!e.reviewed_by||!e.reviewed_at).length,required:result.requirements.length},
+      submission: {eligible:false,provisional:true,outstanding:result.issues.length},
+      geography: {coordinatesEntered:form.site.latitude!==null&&form.site.longitude!==null,verifiedSite:false,wardMapped:false},
       findings: result.issues.map(i => ({code:i.code,severity:i.severity,owner:i.owner})).filter(i=>i.severity==='BLOCKER'||i.severity==='REVIEW'),
       blockerCount: result.issues.filter(i => i.severity === 'BLOCKER').length,
       reviewCount: result.issues.filter(i => i.severity === 'REVIEW').length,
