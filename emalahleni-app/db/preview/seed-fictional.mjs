@@ -55,6 +55,7 @@ async function main(){
     const ct=await webcrypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:context},cryptoKey,encoded);
     return `v1.${Buffer.from(iv).toString('base64')}.${Buffer.from(ct).toString('base64')}`;
   }));
+  const rotate=process.argv.includes('--rotate-key');
   const db=neon(uri);
   const statements=[
     db.query('INSERT INTO public.organisations (id,name,type) VALUES ($1,$2,$3) ON CONFLICT (id) DO NOTHING',
@@ -66,10 +67,12 @@ async function main(){
     db.query('INSERT INTO public.project_memberships (project_id,user_id,role,active) VALUES ($1,$2,$3,true) ON CONFLICT DO NOTHING',
       [projects[1].id,identities[1].id,'AUDITOR']),
     ...cases.map((c,i)=>db.query(
-      'INSERT INTO public.applications (id,organisation_id,project_id,reference,fields_ciphertext,workflow_status) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
+      rotate
+        ? 'INSERT INTO public.applications (id,organisation_id,project_id,reference,fields_ciphertext,workflow_status) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET fields_ciphertext=EXCLUDED.fields_ciphertext WHERE applications.project_id=EXCLUDED.project_id AND applications.reference=EXCLUDED.reference'
+        : 'INSERT INTO public.applications (id,organisation_id,project_id,reference,fields_ciphertext,workflow_status) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
       [c.id,org,c.project,c.reference,encrypted[i],c.status]))
   ];
   await db.transaction(statements,{isolationLevel:'Serializable'});
-  console.log('Preview fictional fixture seed committed: two projects, three test identities, five encrypted applications.');
+  console.log(rotate ? 'Preview fictional cases re-encrypted with supplied test-only key.' : 'Preview fictional fixture seed committed: two projects, three test identities, five encrypted applications.');
 }
 main().catch(err=>{console.error(err.message);process.exitCode=1;});
