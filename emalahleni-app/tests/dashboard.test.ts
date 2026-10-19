@@ -101,5 +101,5 @@ test('preview mode refuses mutations and document API access without database cr
     assert.equal(response.status,403,method+' '+path);
   }
   const health=await handle(new Request('https://preview.example/healthz'),env);
-  assert.equal((await health.json()).caseApi,'read-only-dashboard');
+  assert.equal((await health.json() as {caseApi:string}).caseApi,'read-only-dashboard');
 });
