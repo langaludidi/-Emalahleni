@@ -87,3 +87,19 @@ test('dashboard refuses unassigned project members', async () => {
     (error:unknown)=>error instanceof HttpError && error.status===403
   );
 });
+
+test('preview mode refuses mutations and document API access without database credentials', async () => {
+  const { createHandler } = await import('../src/worker');
+  const handle = createHandler(async () => 'synthetic-user');
+  const env = { PREVIEW_MODE: 'true', ENABLE_CASE_API: 'false' };
+  for (const [method,path] of [
+    ['POST','/api/preview'],
+    ['POST','/api/projects/00000000-0000-4000-8000-000000000101/applications'],
+    ['GET','/api/projects/00000000-0000-4000-8000-000000000101/applications/00000000-0000-4000-8000-000000000102/evidence']
+  ]) {
+    const response = await handle(new Request('https://preview.example'+path,{method}),env);
+    assert.equal(response.status,403,method+' '+path);
+  }
+  const health=await handle(new Request('https://preview.example/healthz'),env);
+  assert.equal((await health.json()).caseApi,'read-only-dashboard');
+});
