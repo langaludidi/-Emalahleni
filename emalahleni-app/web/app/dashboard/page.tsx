@@ -51,6 +51,18 @@ function HistoricalKpis({snapshot}:{snapshot:HistoricalSnapshot}) {
     <p className="dashboard-subnote">The 211 field-plan sites and 209 assessed applications are separate populations. Historical Green is not an app-issued submission approval.</p>
   </>;
 }
+function csvCell(value:unknown):string { return '"'+String(value??'').replaceAll('"','""')+'"'; }
+function exportDashboardCsv(data:DashboardResponse, kind:'register'|'summary', snapshot?:HistoricalSnapshot) {
+  const rows:(string|number|boolean|null)[][]=kind==='register'
+    ? [['Project','Reference','Workflow','Provisional readiness','Blockers','Reviews','GPS entry','Updated','Register complete'],
+       ...data.applications.map(row=>[data.project.code,row.reference,row.workflowStatus,row.readiness,row.blockerCount,row.reviewCount,row.gpsStatus,row.updatedAt,data.live.fullyEnumerated])]
+    : [['Metric','Value'],['Project',data.project.code],['Generated at',data.generatedAt],['Applications',data.live.total],['Drafts',data.live.drafts],['Returned',data.live.returned],['GPS entered',data.live.gpsCaptured],['Register complete',data.live.fullyEnumerated],['Provisional readiness','Yes'],['Historical snapshot',snapshot?.assessmentDate??'None'],['Historical assessed applications',snapshot?.applications??''],['Historical red',snapshot?.red??''],['Historical amber',snapshot?.amber??''],['Historical green',snapshot?.green??''],['Field-plan sites',snapshot?.fieldPlanSites??''],['Field-plan GPS captured',snapshot?.fieldPlanGpsCaptured??''],['Field-plan GPS outstanding',snapshot?.fieldPlanGpsOutstanding??'']];
+  const csv='\uFEFF'+rows.map(row=>row.map(csvCell).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const anchor=document.createElement('a');anchor.href=url;anchor.download='vectra-'+kind+'-'+data.project.code.replace(/[^a-zA-Z0-9_-]/g,'-')+'.csv';anchor.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 export default function ProjectDashboard() {
   const [auth] = useState(() => createAuthClient(authUrl));
   const [projects,setProjects]=useState<ProjectOption[]>([]);
@@ -150,6 +162,37 @@ export default function ProjectDashboard() {
             <button className="secondary" onClick={()=>{setFilters({...initialFilters,gps:'NOT_CAPTURED'});setPage(1);document.getElementById('register-title')?.scrollIntoView({behavior:'smooth'});}}>View missing GPS</button>
           </div>
         </> : <div className="dashboard-alert" role="status">Project-level work-queue statistics are unavailable because this dashboard has only loaded a partial register. Use the application capture workspace until server-side reporting pagination is implemented.</div>}
+      </section>
+      <section className="dashboard-card" aria-labelledby="gps-analysis-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">FIELD PLAN · HISTORICAL REFERENCE</p><h2 id="gps-analysis-title">GPS coverage and fieldwork</h2></div><span className="dashboard-count">Source workbook · not live site coordinates</span></div>
+        {snapshot ? <>
+          <div className="dashboard-gps-layout">
+            <div>
+              <div className="dashboard-gps-track" role="img" aria-label={snapshot.fieldPlanGpsCaptured+' captured of '+snapshot.fieldPlanSites+' field-plan sites'}>
+                <span style={{width:(100*snapshot.fieldPlanGpsCaptured/snapshot.fieldPlanSites)+'%'}}/>
+              </div>
+              <div className="dashboard-support-kpis">
+                <div><small>Field-plan sites</small><strong>{snapshot.fieldPlanSites}</strong></div>
+                <div><small>GPS captured</small><strong>{snapshot.fieldPlanGpsCaptured}</strong></div>
+                <div><small>GPS outstanding</small><strong>{snapshot.fieldPlanGpsOutstanding}</strong></div>
+              </div>
+              <p className="dashboard-subnote">Application GPS available: {snapshot.applicationGpsAvailable}; application GPS needed: {snapshot.applicationGpsNeeded}; applications without matched sites: {snapshot.applicationsWithoutMatchedSite}. These are separate workbook categories and must not be summed into field-plan totals.</p>
+            </div>
+            <div className="dashboard-map-placeholder">
+              <strong>Geographic map awaiting verified coordinate dataset</strong>
+              <p>Historical GPS totals are available, but this dashboard API deliberately does not expose beneficiary coordinates. A project-authorised, privacy-reviewed map endpoint and approved site matching are required before displaying pins.</p>
+            </div>
+          </div>
+        </> : <p className="dashboard-subnote">No approved GPS historical reference is associated with this project.</p>}
+      </section>
+      <section className="dashboard-card" aria-labelledby="reporting-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPORTING · CLIENT-SIDE EXPORT</p><h2 id="reporting-title">Management reports</h2></div><span className="dashboard-count">Safe project summaries only</span></div>
+        <div className="dashboard-report-grid">
+          <div><strong>Applications register</strong><p>References, workflow, provisional readiness, blocker counts and GPS entry status.</p><button className="secondary" onClick={()=>exportDashboardCsv(data,'register')}>Export register CSV</button></div>
+          <div><strong>Project summary</strong><p>Current database totals, completeness limitations and selected historical baseline.</p><button className="secondary" onClick={()=>exportDashboardCsv(data,'summary',snapshot)}>Export summary CSV</button></div>
+          <div><strong>Print-friendly report</strong><p>Use the browser print dialog to save the dashboard as a PDF.</p><button className="secondary" onClick={()=>window.print()}>Print / Save PDF</button></div>
+        </div>
+        <p className="dashboard-subnote">Exports contain no names, ID numbers, documents or precise coordinates. If the register is truncated, the CSV is explicitly labelled partial. This is an interim reporting feature, not the final server-generated official report.</p>
       </section>
       <section className="dashboard-card" aria-labelledby="register-title">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">PROJECT REGISTER · READ-ONLY</p><h2 id="register-title">Applications register</h2></div><span className="dashboard-count">{rows.length} displayed of {data.live.total} live applications</span></div>
