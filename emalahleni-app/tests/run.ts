@@ -7,3 +7,4 @@ import './features.test.ts';
 import './reliability.test.ts';
 
 import './dashboard.test.ts';
+import './preview-schema.test.ts';
