@@ -34,3 +34,5 @@ jobs:
         run: npm test
       - name: Frontend and Worker dry-run build
         run: npm run build
+      - name: Isolated preview Worker dry-run (no deployment)
+        run: npx wrangler deploy --config wrangler.preview.jsonc --dry-run --containers-rollout=none
