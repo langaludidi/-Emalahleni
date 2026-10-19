@@ -39,6 +39,8 @@ test('fixture seeder fails closed unless explicitly pointed at isolated preview'
   assert.match(seed, /url\.pathname!=='\/vectra_preview'/);
   assert.match(seed, /url\.searchParams\.get\('sslmode'\)!=='require'/);
   assert.match(seed, /additionalData:context/);
+  assert.match(seed, /process\.argv\.includes\('--rotate-key'\)/);
+  assert.match(seed, /applications\.project_id=EXCLUDED\.project_id AND applications\.reference=EXCLUDED\.reference/);
   assert.match(seed, /latitude:null,longitude:null/);
   assert.doesNotMatch(seed, /https?:\/\/[^\s]*@/);
 });
