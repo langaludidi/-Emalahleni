@@ -41,11 +41,11 @@ async function initialise() {
     if(!engineReady&&bootError.length<4096)bootError+=bytes.toString().slice(0,4096-bootError.length);
   });
   daemon.once('error',error=>{
-    engineFailure=error.code==='EACCES'?'ENGINE_PERMISSION':'ENGINE_STOPPED';
+    engineFailure=error.code==='EACCES'?'ENGINE_EXEC_PERMISSION':'ENGINE_STOPPED';
     console.error('SCANNER_DAEMON_START_FAILED',{code:error.code??'UNKNOWN',reason:engineFailure});
   });
   daemon.once('exit',(code,signal)=> { if (!stopping) {
-    engineFailure=/permission denied/i.test(bootError)?'ENGINE_PERMISSION':/cannot allocate|out of memory|bad_alloc/i.test(bootError)?'ENGINE_MEMORY':/no supported database|can.t open.*database|malformed database/i.test(bootError)?'ENGINE_DATABASE':signal==='SIGKILL'?'ENGINE_KILLED':'ENGINE_STOPPED';
+    engineFailure=/permission denied/i.test(bootError)?(/\/dev\/null|logger|log file/i.test(bootError)?'ENGINE_LOG_PERMISSION':/\/run\/clamav|socket/i.test(bootError)?'ENGINE_SOCKET_PERMISSION':/\/var\/lib\/clamav|database/i.test(bootError)?'ENGINE_DATABASE_PERMISSION':/\/app\/clamd\.conf|config/i.test(bootError)?'ENGINE_CONFIG_PERMISSION':/temporary|\/tmp/i.test(bootError)?'ENGINE_TEMP_PERMISSION':'ENGINE_PERMISSION'):/cannot allocate|out of memory|bad_alloc/i.test(bootError)?'ENGINE_MEMORY':/no supported database|can.t open.*database|malformed database/i.test(bootError)?'ENGINE_DATABASE':signal==='SIGKILL'?'ENGINE_KILLED':'ENGINE_STOPPED';
     console.error('SCANNER_DAEMON_STOPPED',{code,signal,reason:engineFailure,...(!engineReady?{startupError:safeBootError()}:{})});
   }});
   // NotifyClamd can only reload signatures after the daemon accepts commands.
