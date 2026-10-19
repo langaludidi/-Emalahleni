@@ -3,6 +3,7 @@ import {digest,type EvidenceEnv} from './evidence';
 import {HttpError,readBytes} from './http';
 import {parseIdText,validSaId} from './id-reading';
 import {startupReasons} from '../scanner/startup-errors';
+import {scannerHealthReasons} from './evidence-contracts';
 
 const healthSchema=z.object({status:z.literal('ready'),malwareScanner:z.literal('ready'),idReader:z.literal('ready')}).strict();
 const scanSchema=z.object({sha256:z.string().regex(/^[a-f0-9]{64}$/),verdict:z.literal('CLEAN')}).strict();
@@ -28,7 +29,7 @@ function syntheticPdf(){
 }
 const specimen=syntheticPdf();
 export interface DocumentServiceProbe {status:'ready';checks:{scannerHealth:true;cleanScan:true;idReading:true};}
-export type DocumentServiceCheck='STARTUP'|'STARTUP_CONFIGURATION'|'STARTUP_INSTANCE'|'STARTUP_PORT'|'STARTUP_EXIT'|'STARTUP_RPC'|'CONNECTION'|'CREDENTIALS'|'HEALTH'|'SCAN'|'ID_READING'|'ID_VALIDATION';
+export type DocumentServiceCheck='STARTUP'|'STARTUP_CONFIGURATION'|'STARTUP_INSTANCE'|'STARTUP_PORT'|'STARTUP_EXIT'|'STARTUP_RPC'|'CONNECTION'|'CREDENTIALS'|'HEALTH'|'SCAN'|'ID_READING'|'ID_VALIDATION'|`HEALTH_${typeof scannerHealthReasons[number]}`;
 export class DocumentServiceCheckError extends HttpError {
  constructor(readonly failedCheck:DocumentServiceCheck){super(503,'DOCUMENT_SERVICE_NOT_READY');}
 }
@@ -52,6 +53,10 @@ export async function probeDocumentService(env:EvidenceEnv):Promise<DocumentServ
      throw new DocumentServiceCheckError(reason&&reason!=='UNKNOWN'?`STARTUP_${reason}`:'STARTUP');
     }
     if(value.error==='SCANNER_CONNECTION_FAILED')throw new DocumentServiceCheckError('CONNECTION');
+    if(value.error==='SCANNER_NOT_READY'){
+     const reason=scannerHealthReasons.find(candidate=>candidate===value.reason);
+     if(reason)throw new DocumentServiceCheckError(`HEALTH_${reason}`);
+    }
    }catch(error){if(error instanceof DocumentServiceCheckError)throw error;}
    throw new DocumentServiceCheckError(check);
   }
@@ -77,3 +82,4 @@ export async function probeDocumentService(env:EvidenceEnv):Promise<DocumentServ
   throw new DocumentServiceCheckError(check);
  }
 }
+

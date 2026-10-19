@@ -1,7 +1,7 @@
 // All processes run as the image's unprivileged scanner user.
 import { spawn } from 'node:child_process';
 import net from 'node:net';
-import { createScannerServer } from './server.mjs';
+import { createScannerServer, readiness } from './server.mjs';
 const children = new Set();
 let stopping = false;
 function child(command,args,onStderr) {
@@ -22,8 +22,11 @@ function pingDaemon() {
   });
 }
 console.info('SCANNER_PROCESS_STARTED',{credentialConfigured:typeof process.env.SCANNER_TOKEN==='string'&&process.env.SCANNER_TOKEN.length>=32});
-const server = createScannerServer();
-let engineReady=false,bootError='';
+let engineReady=false,bootError='',engineFailure='';
+const server = createScannerServer({ready:async()=>{
+  if(engineFailure)throw new Error(engineFailure);
+  return readiness();
+}});
 // Liveness is distinct from readiness: health remains503 and scan/read paths
 // retain their malware/freshness gates while clamd loads its database.
 server.listen(Number(process.env.PORT ?? 8080),'0.0.0.0');
@@ -37,8 +40,14 @@ async function initialise() {
   const daemon = child('/usr/sbin/clamd',['--config-file=/app/clamd.conf'],bytes=>{
     if(!engineReady&&bootError.length<4096)bootError+=bytes.toString().slice(0,4096-bootError.length);
   });
-  daemon.once('error',error=>console.error('SCANNER_DAEMON_START_FAILED',{code:error.code??'UNKNOWN'}));
-  daemon.once('exit',(code,signal)=> { if (!stopping) console.error('SCANNER_DAEMON_STOPPED',{code,signal,...(!engineReady?{startupError:safeBootError()}:{})}); });
+  daemon.once('error',error=>{
+    engineFailure=error.code==='EACCES'?'ENGINE_EXEC_PERMISSION':'ENGINE_STOPPED';
+    console.error('SCANNER_DAEMON_START_FAILED',{code:error.code??'UNKNOWN',reason:engineFailure});
+  });
+  daemon.once('exit',(code,signal)=> { if (!stopping) {
+    engineFailure=/permission denied/i.test(bootError)?(/\/dev\/null|logger|log file/i.test(bootError)?'ENGINE_LOG_PERMISSION':/\/run\/clamav|socket/i.test(bootError)?'ENGINE_SOCKET_PERMISSION':/\/var\/lib\/clamav|database/i.test(bootError)?'ENGINE_DATABASE_PERMISSION':/\/app\/clamd\.conf|config/i.test(bootError)?'ENGINE_CONFIG_PERMISSION':/temporary|\/tmp/i.test(bootError)?'ENGINE_TEMP_PERMISSION':'ENGINE_PERMISSION'):/cannot allocate|out of memory|bad_alloc/i.test(bootError)?'ENGINE_MEMORY':/no supported database|can.t open.*database|malformed database/i.test(bootError)?'ENGINE_DATABASE':signal==='SIGKILL'?'ENGINE_KILLED':'ENGINE_STOPPED';
+    console.error('SCANNER_DAEMON_STOPPED',{code,signal,reason:engineFailure,...(!engineReady?{startupError:safeBootError()}:{})});
+  }});
   // NotifyClamd can only reload signatures after the daemon accepts commands.
   // This is a bounded internal startup check, not an external health polling job.
   for(let attempt=0;attempt<120&&!stopping&&children.has(daemon);attempt++) {
@@ -58,3 +67,4 @@ async function initialise() {
 void initialise();
 function shutdown(signal) { stopping = true;console.info('SCANNER_SHUTDOWN',{signal});if(server.listening)server.close(); for (const proc of children) proc.kill('SIGTERM'); setTimeout(()=>process.exit(0),5000).unref(); }
 process.on('SIGTERM',()=>shutdown('SIGTERM')); process.on('SIGINT',()=>shutdown('SIGINT'));
+
