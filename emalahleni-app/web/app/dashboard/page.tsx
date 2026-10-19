@@ -198,6 +198,13 @@ export default function ProjectDashboard() {
           <p className="dashboard-subnote">Movement between assessment snapshots is historical, not evidence of a beneficiary approval. These snapshots are currently source-coded and require a controlled import workflow before automated reporting.</p>
         </> : <p className="dashboard-subnote">At least two approved historical snapshots are required to show movement.</p>}
       </section>
+      <section className="dashboard-card" aria-labelledby="rule-frequency-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">PROVISIONAL ASSESSMENT RULES</p><h2 id="rule-frequency-title">Most frequent outstanding checks</h2></div></div>
+        {data.live.fullyEnumerated ? <div className="dashboard-table-scroll"><table className="dashboard-table"><thead><tr><th>Rule code</th><th>Cases</th><th>Owner</th><th>Severity</th></tr></thead><tbody>
+          {Array.from(data.applications.flatMap(a=>a.findings??[]).reduce((counts,issue)=>{const key=issue.code+'|'+issue.owner+'|'+issue.severity;counts.set(key,(counts.get(key)??0)+1);return counts;},new Map<string,number>())).sort((a,b)=>b[1]-a[1]).slice(0,15).map(([key,count])=>{const parts=key.split('|');return <tr key={key}><td>{parts[0]}</td><td>{count}</td><td>{parts[1].replaceAll('_',' ')}</td><td>{parts[2]}</td></tr>;})}
+        </tbody></table></div> : <div className="dashboard-alert">Rule frequency is unavailable because the application register is incomplete.</div>}
+        <p className="dashboard-subnote">These findings come from provisional application rules, not a reconciled or approved 63-check workbook matrix. They do not represent departmental approval.</p>
+      </section>
       <section className="dashboard-card" aria-labelledby="reporting-title">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">REPORTING · CLIENT-SIDE EXPORT</p><h2 id="reporting-title">Management reports</h2></div><span className="dashboard-count">Safe project summaries only</span></div>
         <div className="dashboard-report-grid">
