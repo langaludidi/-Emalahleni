@@ -26,6 +26,8 @@ jobs:
           cache: npm
           cache-dependency-path: emalahleni-app/package-lock.json
       - run: npm ci --ignore-scripts
+      - name: Install private scanner dependencies
+        run: npm --prefix scanner ci --ignore-scripts
       - name: Typecheck backend and frontend
         run: npm run typecheck
       - name: Unit and regression tests
