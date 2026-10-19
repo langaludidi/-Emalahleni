@@ -75,6 +75,7 @@ export default function ProjectDashboard() {
   const [filters,setFilters]=useState<Filters>(initialFilters);
   const [sort,setSort]=useState('updated');
   const [page,setPage]=useState(1);
+  const [selectedCase,setSelectedCase]=useState('');
   async function api(path:string) {
     const session=await auth.getSession();
     const token=session.data?.session?.token;
@@ -110,6 +111,7 @@ export default function ProjectDashboard() {
     })();
     return()=>{active=false;};
   },[]);
+  const selectedRecord=data?.applications.find(a=>a.id===selectedCase);
   const snapshot=data?.historicalSnapshots.find(s=>s.id===snapshotId)??data?.historicalSnapshots.at(-1);
   const rows=useMemo(()=>filtered(data?.applications??[],filters,sort),[data,filters,sort]);
   const pages=Math.max(1,Math.ceil(rows.length/PAGE_SIZE));
@@ -162,6 +164,33 @@ export default function ProjectDashboard() {
             <button className="secondary" onClick={()=>{setFilters({...initialFilters,gps:'NOT_CAPTURED'});setPage(1);document.getElementById('register-title')?.scrollIntoView({behavior:'smooth'});}}>View missing GPS</button>
           </div>
         </> : <div className="dashboard-alert" role="status">Project-level work-queue statistics are unavailable because this dashboard has only loaded a partial register. Use the application capture workspace until server-side reporting pagination is implemented.</div>}
+      </section>
+      <section className="dashboard-card" aria-labelledby="assurance-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">ASSURANCE CONTROL CENTRE · READ-ONLY</p><h2 id="assurance-title">Evidence, geography and submission preparation</h2></div></div>
+        {data.live.fullyEnumerated ? <div className="dashboard-support-kpis">
+          <div><small>Evidence items recorded</small><strong>{data.applications.reduce((n,a)=>n+a.evidence.total,0)}</strong></div>
+          <div><small>Evidence items pending review</small><strong>{data.applications.reduce((n,a)=>n+a.evidence.pending,0)}</strong></div>
+          <div><small>GPS entered · unverified</small><strong>{data.applications.filter(a=>a.geography.coordinatesEntered).length}</strong></div>
+          <div><small>Verified map-ready sites</small><strong>—</strong></div>
+        </div> : <p className="dashboard-alert">Full project evidence totals require a complete register.</p>}
+        <p className="dashboard-subnote">Verified evidence counts reflect recorded review metadata only; this summary does not independently revalidate document expiry or certification. Ward mapping and verified site pins are not available in the current authorised dataset. No submission approval can be issued while the rulebook remains provisional.</p>
+      </section>
+      <section className="dashboard-card" aria-labelledby="case-inspector-title">
+        <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">BENEFICIARY EXCEPTION RESOLUTION · READ-ONLY</p><h2 id="case-inspector-title">Case assessment inspector</h2></div></div>
+        <label>Application reference<select value={selectedCase} onChange={e=>setSelectedCase(e.target.value)}><option value="">Select a case</option>{data.applications.map(a=><option key={a.id} value={a.id}>{a.reference}</option>)}</select></label>
+        {selectedRecord ? <>
+          <div className="dashboard-support-kpis">
+            <div><small>Blockers</small><strong>{selectedRecord.blockerCount}</strong></div>
+            <div><small>Reviews</small><strong>{selectedRecord.reviewCount}</strong></div>
+            <div><small>Evidence recorded</small><strong>{selectedRecord.evidence.total}</strong></div>
+            <div><small>Evidence pending</small><strong>{selectedRecord.evidence.pending}</strong></div>
+          </div>
+          <div className="dashboard-table-scroll"><table className="dashboard-table"><thead><tr><th>Outstanding check</th><th>Severity</th><th>Responsible party</th></tr></thead><tbody>
+            {selectedRecord.findings.map((finding,i)=><tr key={finding.code+'-'+i}><td>{finding.code}</td><td>{finding.severity}</td><td>{finding.owner.replaceAll('_',' ')}</td></tr>)}
+            {!selectedRecord.findings.length&&<tr><td colSpan={3}>No provisional findings recorded.</td></tr>}
+          </tbody></table></div>
+          <p className="dashboard-subnote">Submission pack: not eligible for approval. This inspector never edits a beneficiary record; resolve issues through the existing capture and departmental review workflows.</p>
+        </> : <p className="dashboard-subnote">Select a reference to inspect its outstanding checks and evidence completeness without exposing personal details.</p>}
       </section>
       <section className="dashboard-card" aria-labelledby="gps-analysis-title">
         <div className="dashboard-section-heading"><div><p className="dashboard-eyebrow">FIELD PLAN · HISTORICAL REFERENCE</p><h2 id="gps-analysis-title">GPS coverage and fieldwork</h2></div><span className="dashboard-count">Source workbook · not live site coordinates</span></div>
