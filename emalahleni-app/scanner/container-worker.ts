@@ -1,5 +1,7 @@
 import { Container, type StopParams } from '@cloudflare/containers';
 import { startupReason, startupDiagnostic, type StartupReason } from './startup-errors';
+import { scannerHealthReasons } from '../src/evidence-contracts';
+import { readBytes } from '../src/http';
 interface Env { SCANNER_CONTAINER: DurableObjectNamespace<DocumentScanner>; SCANNER_TOKEN: string; }
 export class DocumentScanner extends Container<Env> {
   defaultPort = 8080;
@@ -33,6 +35,7 @@ export class DocumentScanner extends Container<Env> {
     }
     try {
       const deadline=Date.now()+90_000;
+      let healthReason:typeof scannerHealthReasons[number]|undefined;
       while(Date.now()<deadline){
         request.signal.throwIfAborted();
         const health=await super.fetch(new Request('http://scanner.internal/healthz',{
@@ -40,14 +43,20 @@ export class DocumentScanner extends Container<Env> {
         }));
         if(health.status===200){
           if(new URL(request.url).pathname==='/healthz')return health;
-          await health.body?.cancel();
+          await readBytes(health,1024);
           return await super.fetch(request);
         }
         if(health.status!==503)return health;
-        await health.body?.cancel();
+        try{
+          const value=JSON.parse(new TextDecoder().decode(await readBytes(health,1024))) as {reason?:unknown};
+          healthReason=scannerHealthReasons.find(code=>code===value.reason);
+        }catch{healthReason=undefined;}
+        if(healthReason&&!['SCAN_UNAVAILABLE','SCAN_TIMEOUT','READ_TIMEOUT'].includes(healthReason)){
+          return Response.json({error:'SCANNER_NOT_READY',reason:healthReason},{status:503,headers:{'Cache-Control':'no-store'}});
+        }
         await new Promise(resolve=>setTimeout(resolve,1000));
       }
-      return Response.json({error:'SCANNER_NOT_READY'},{status:503,headers:{'Cache-Control':'no-store'}});
+      return Response.json({error:'SCANNER_NOT_READY',...(healthReason?{reason:healthReason}:{})},{status:503,headers:{'Cache-Control':'no-store'}});
     }
     catch { return unavailable('SCANNER_CONNECTION_FAILED'); }
   }
@@ -71,3 +80,4 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+

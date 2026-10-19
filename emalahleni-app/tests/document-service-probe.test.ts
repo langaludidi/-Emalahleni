@@ -68,6 +68,9 @@ test('failed service checks expose only fixed diagnostic stages and never privat
   [Response.json({error:'SCANNER_START_FAILED',reason:'CONFIGURATION'},{status:503}),'STARTUP_CONFIGURATION'],
   [Response.json({error:'SCANNER_START_FAILED',reason:'PORT'},{status:503}),'STARTUP_PORT'],
   [Response.json({error:'SCANNER_START_FAILED',reason:'private details'},{status:503}),'STARTUP'],
+  [Response.json({error:'SCANNER_NOT_READY',reason:'ENGINE_KILLED'},{status:503}),'HEALTH_ENGINE_KILLED'],
+  [Response.json({error:'SCANNER_NOT_READY',reason:'PDFINFO_UNAVAILABLE'},{status:503}),'HEALTH_PDFINFO_UNAVAILABLE'],
+  [Response.json({error:'SCANNER_NOT_READY',reason:'private decoder details'},{status:503}),'HEALTH'],
   [new Response('private token and provider details',{status:401}),'CREDENTIALS'],
   [new Response('private token and provider details',{status:503}),'HEALTH'],
   [Response.json({error:'private token and provider details'},{status:503}),'HEALTH'],
@@ -109,3 +112,4 @@ test('private startup diagnostics retain the exception message while redacting r
  assert.match(caused.errorMessage,/caused by: Cannot perform I\/O/);
  assert.equal(caused.errorMessage.includes(token),false);
 });
+

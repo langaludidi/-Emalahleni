@@ -149,9 +149,9 @@ export async function readiness({ clamOptions, run = runTool } = {}) {
   await signaturesReady(clamOptions);
   if (await clamCommand('PING', undefined, clamOptions) !== 'PONG') throw problem('SCAN_UNAVAILABLE');
   await Promise.all([
-    run('tesseract',['--list-langs'],{ timeout: 5_000 }).then(value => { if (!/^eng$/m.test(value)) throw problem('READ_TOOLS_UNAVAILABLE'); }),
-    run('pdfinfo',['-v'],{ timeout: 5_000 }),
-    run('pdftoppm',['-v'],{ timeout: 5_000 }),
+    run('tesseract',['--list-langs'],{ timeout: 5_000 }).then(value => { if (!/^eng$/m.test(value)) throw problem('READ_TOOLS_UNAVAILABLE'); }).catch(()=>{throw problem('TESSERACT_UNAVAILABLE');}),
+    run('pdfinfo',['-v'],{ timeout: 5_000 }).catch(()=>{throw problem('PDFINFO_UNAVAILABLE');}),
+    run('pdftoppm',['-v'],{ timeout: 5_000 }).catch(()=>{throw problem('PDFTOPPM_UNAVAILABLE');}),
   ]);
   return { status: 'ready', malwareScanner: 'ready', idReader: 'ready' };
 }
@@ -166,7 +166,11 @@ export function createScannerServer(options = {}) {
     if (!authorised(req.headers.authorization,secret)) { req.resume(); return send(401,{error:'UNAUTHENTICATED'}); }
     const path = new URL(req.url,'http://scanner').pathname;
     if (req.method === 'GET' && path === '/healthz') {
-      try { return send(200,await ready()); } catch { return send(503,{error:'SCANNER_NOT_READY'}); }
+      try { return send(200,await ready()); } catch (error) {
+        const allowed=['ENGINE_MEMORY','ENGINE_PERMISSION','ENGINE_DATABASE','ENGINE_KILLED','ENGINE_STOPPED','SIGNATURES_NOT_READY','SCAN_UNAVAILABLE','SCAN_TIMEOUT','READ_TOOLS_UNAVAILABLE','READ_TIMEOUT','DOCUMENT_UNREADABLE','TESSERACT_UNAVAILABLE','PDFINFO_UNAVAILABLE','PDFTOPPM_UNAVAILABLE'];
+        const reason=allowed.find(code=>code===error?.message);
+        return send(503,{error:'SCANNER_NOT_READY',...(reason?{reason}:{})});
+      }
     }
     if (req.method !== 'POST' || !['/scan','/read-id'].includes(path)) { req.resume(); return send(404,{error:'NOT_FOUND'}); }
     const type = String(req.headers['content-type'] ?? '').split(';')[0].toLowerCase();
@@ -197,3 +201,4 @@ export function createScannerServer(options = {}) {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   createScannerServer().listen(Number(process.env.PORT ?? 8080), process.env.LISTEN_HOST ?? '127.0.0.1');
 }
+
