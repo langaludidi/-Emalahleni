@@ -67,6 +67,13 @@ test('read-only dashboard returns only safe register fields, and never edits cap
   assert.equal(report.historicalSnapshots.length,2);
   assert.equal(report.applications[0].reference,'SYN-EXAMPLE');
   assert.equal(report.applications[0].gpsStatus,'CAPTURED_UNVERIFIED');
+  assert.equal(report.applications[0].geography.coordinatesEntered,true);
+  assert.equal(report.applications[0].geography.verifiedSite,false);
+  assert.equal(report.applications[0].geography.wardMapped,false);
+  assert.equal(report.applications[0].submission.eligible,false);
+  assert.equal(report.applications[0].submission.provisional,true);
+  assert.equal(report.applications[0].evidence.total,0);
+  assert.ok(report.applications[0].findings.some(i=>i.code==='RULES_PENDING_APPROVAL'));
   const response=JSON.stringify(report);
   for (const secret of ['Private Person','0000000000000','-31.7','27.3',ciphertext]) {
     assert.equal(response.includes(secret),false,'Dashboard leaked a beneficiary attribute');
