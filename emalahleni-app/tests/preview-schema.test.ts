@@ -42,3 +42,18 @@ test('fixture seeder fails closed unless explicitly pointed at isolated preview'
   assert.match(seed, /latitude:null,longitude:null/);
   assert.doesNotMatch(seed, /https?:\/\/[^\s]*@/);
 });
+
+test('dashboard-only Worker config never binds evidence or scanner resources', () => {
+  const preview = JSON.parse(readFileSync(new URL('../wrangler.preview.jsonc', import.meta.url), 'utf8'));
+  assert.equal(preview.vars.PREVIEW_MODE, 'true');
+  assert.equal(preview.vars.ENABLE_CASE_API, 'false');
+  assert.equal(preview.vars.ENABLE_DOCUMENT_UPLOADS, 'false');
+  assert.equal(preview.vars.ENABLE_ID_READING, 'false');
+  assert.match(preview.vars.NEON_AUTH_BASE_URL, /\/vectra_preview\/auth$/);
+  assert.match(preview.vars.NEON_AUTH_JWKS_URL, /\/vectra_preview\/auth\/\.well-known\/jwks\.json$/);
+  for (const forbidden of ['r2_buckets', 'containers', 'durable_objects', 'exports']) {
+    assert.equal(Object.hasOwn(preview, forbidden), false, forbidden + ' must be absent');
+  }
+  assert.equal(Object.hasOwn(preview.vars, 'DATABASE_URL'), false);
+  assert.equal(Object.hasOwn(preview.vars, 'FORM_ENCRYPTION_KEY'), false);
+});
