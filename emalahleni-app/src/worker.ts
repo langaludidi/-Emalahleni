@@ -49,6 +49,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       try { const object = await env.EVIDENCE_BUCKET.head('__preflight__/synthetic-probe'); return json({ service: 'R2', status: 'reachable', syntheticProbeObjectPresent: object !== null, writeEnabled: false }); }
       catch { return json({ service: 'R2', status: 'unavailable', writeEnabled: false }, 503); }
     }
+    if (env.PREVIEW_MODE === 'true' && path.startsWith('/api/') && (request.method !== 'GET' || !/^\/api\/projects\/[0-9a-f-]+\/dashboard$/i.test(path))) throw new HttpError(403, 'PREVIEW_READ_ONLY');
     // Browser preview calculations are advisory; evidence is never accepted from this endpoint.
     if (path === '/api/preview') {
       if (request.method !== 'POST') throw new HttpError(405, 'METHOD_NOT_ALLOWED');
