@@ -36,6 +36,7 @@ export interface DashboardApplication {
   blockerCount: number;
   reviewCount: number;
   gpsStatus: 'CAPTURED_UNVERIFIED' | 'NOT_CAPTURED';
+  findings: { code:string; severity:'BLOCKER'|'REVIEW'; owner:string }[];
 }
 export interface DashboardResponse {
   project: { id: string; name: string; code: string; role: string };
@@ -157,6 +158,7 @@ export async function readProjectDashboard(
       workflowStatus: String(r.workflow_status),
       updatedAt: new Date(String(r.updated_at)).toISOString(),
       readiness: result.readiness,
+      findings: result.issues.map(i => ({code:i.code,severity:i.severity,owner:i.owner})).filter(i=>i.severity==='BLOCKER'||i.severity==='REVIEW'),
       blockerCount: result.issues.filter(i => i.severity === 'BLOCKER').length,
       reviewCount: result.issues.filter(i => i.severity === 'REVIEW').length,
       gpsStatus: form.site.latitude !== null && form.site.longitude !== null ? 'CAPTURED_UNVERIFIED' : 'NOT_CAPTURED'
