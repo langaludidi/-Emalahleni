@@ -5,33 +5,84 @@
   "compatibility_date": "2026-10-10",
   "workers_dev": true,
   "preview_urls": false,
-  "observability": { "enabled": true, "redact_query_string": true },
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true
+  },
   "assets": {
     "directory": "./web/out",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/healthz", "/storage-healthz", "/storage-probe"]
+    "run_worker_first": [
+      "/api/*",
+      "/healthz",
+      "/storage-healthz",
+      "/storage-probe"
+    ]
   },
-  "r2_buckets": [{ "binding": "EVIDENCE_BUCKET", "bucket_name": "emalahleni-assure-preview-evidence" }],
-  "durable_objects": { "bindings": [{ "name": "SCANNER_CONTAINER", "class_name": "DocumentScanner" }] },
-  "exports": { "DocumentScanner": { "type": "durable-object", "storage": "sqlite", "container": "emalahleni-assure-preview-scanner" } },
-  "containers": [{
-    "name": "emalahleni-assure-preview-scanner",
-    "class_name": "DocumentScanner",
-    "image": "./scanner/Dockerfile",
-    "image_build_context": "./scanner",
-    "max_instances": 1,
-    "instance_type": "standard-1"
-  }],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE_BUCKET",
+      "bucket_name": "emalahleni-assure-preview-evidence"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCANNER_CONTAINER",
+        "class_name": "DocumentScanner"
+      }
+    ]
+  },
+  "exports": {
+    "DocumentScanner": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "emalahleni-assure-preview-scanner"
+    }
+  },
+  "containers": [
+    {
+      "name": "emalahleni-assure-preview-scanner",
+      "class_name": "DocumentScanner",
+      "image": "./scanner/Dockerfile",
+      "image_build_context": "./scanner",
+      "max_instances": 1,
+      "instance_type": "standard-1"
+    }
+  ],
   "ratelimits": [
-    { "name": "API_RATE_LIMITER", "namespace_id": "2026101901", "simple": { "limit": 120, "period": 60 } },
-    { "name": "WRITE_RATE_LIMITER", "namespace_id": "2026101902", "simple": { "limit": 30, "period": 60 } },
-    { "name": "DOCUMENT_RATE_LIMITER", "namespace_id": "2026101903", "simple": { "limit": 12, "period": 60 } }
+    {
+      "name": "API_RATE_LIMITER",
+      "namespace_id": "2026101901",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "WRITE_RATE_LIMITER",
+      "namespace_id": "2026101902",
+      "simple": {
+        "limit": 30,
+        "period": 60
+      }
+    },
+    {
+      "name": "DOCUMENT_RATE_LIMITER",
+      "namespace_id": "2026101903",
+      "simple": {
+        "limit": 12,
+        "period": 60
+      }
+    }
   ],
   "vars": {
     "ENABLE_API_RATE_LIMITS": "true",
     "ENABLE_CASE_API": "false",
     "ENABLE_DOCUMENT_UPLOADS": "false",
     "ENABLE_ID_READING": "false",
-    "PREVIEW_MODE": "true"
+    "PREVIEW_MODE": "true",
+    "NEON_AUTH_BASE_URL": "https://ep-frosty-dawn-za6ix0p6.neonauth.c-2.eu-west-2.aws.neon.tech/vectra_preview/auth",
+    "NEON_AUTH_JWKS_URL": "https://ep-frosty-dawn-za6ix0p6.neonauth.c-2.eu-west-2.aws.neon.tech/vectra_preview/auth/.well-known/jwks.json"
   }
 }
