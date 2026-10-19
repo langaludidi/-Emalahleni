@@ -26,7 +26,8 @@ jobs:
         working-directory: emalahleni-app
       - run: npm test && npm run typecheck
       - run: docker build --platform linux/amd64 -t emalahleni-scanner-test .
-      - run: docker run -d --name emalahleni-scanner-test --memory 4g --cpus 0.5 --mount type=bind,src="$PWD",dst=/contract,readonly --env SCANNER_TOKEN=synthetic-scanner-integration-token-00000000 emalahleni-scanner-test
+      # A platform-owned /run directory must not prevent the unprivileged daemon starting.
+      - run: docker run -d --name emalahleni-scanner-test --memory 4g --cpus 0.5 --mount type=tmpfs,dst=/run/clamav,tmpfs-mode=0755 --mount type=bind,src="$PWD",dst=/contract,readonly --env SCANNER_TOKEN=synthetic-scanner-integration-token-00000000 emalahleni-scanner-test
       - run: docker exec emalahleni-scanner-test node /contract/test/clamav-integration.mjs
       - if: always()
         run: docker rm -f emalahleni-scanner-test
@@ -39,3 +40,4 @@ jobs:
           path: emalahleni-app/review/scanner-worker-integration.log
           if-no-files-found: ignore
           retention-days: 3
+
