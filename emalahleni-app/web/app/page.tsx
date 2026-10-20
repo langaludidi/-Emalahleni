@@ -47,7 +47,9 @@ export default function Page() {
   async function accessToken() {
     // A valid sign-in session can contain an opaque cookie token. Request the
     // API JWT explicitly instead of depending on optional response headers.
-    const result=await auth.token();const token=result.data?.token;
+    // Neon 0.5 can reuse its session cache for /token. Its force-fetch header
+    // asks the SDK to reach the JWT endpoint and is removed before transport.
+    const result=await auth.token({fetchOptions:{headers:{'X-Force-Fetch':'true'}}});const token=result.data?.token;
     if(result.error || !token || token.split('.').length!==3)throw new Error('Sign out and sign in again to continue.');
     return token;
   }
