@@ -164,7 +164,9 @@ try:
             def encoded(value):
                 return base64.urlsafe_b64encode(json.dumps(value).encode()).decode().rstrip('=')
             browser_token = encoded({'alg':'EdDSA'}) + '.' + encoded({'sub':'synthetic-user','exp':int(time.time())+900}) + '.synthetic-signature'
-            auth_headers = {'set-auth-jwt':browser_token,'access-control-expose-headers':'set-auth-jwt','access-control-allow-origin':base,'access-control-allow-credentials':'true'}
+            # Real Neon sessions may stay opaque without a set-auth-jwt header.
+            # API authentication must obtain the JWT from the supported /token route.
+            auth_headers = {'access-control-allow-origin':base,'access-control-allow-credentials':'true'}
             project_tokens = []
             def successful_sign_in(route):
                 signed_in['value'] = True
@@ -174,9 +176,12 @@ try:
             def successful_sign_out(route):
                 signed_in['value'] = False
                 route.fulfill(status=200, content_type='application/json', body=json.dumps({'success':True}))
+            def api_token_response(route):
+                route.fulfill(status=200 if signed_in['value'] else 401, headers=auth_headers, content_type='application/json', body=json.dumps({'token':browser_token} if signed_in['value'] else {'code':'UNAUTHORIZED'}))
             page.route('**/sign-in/email', successful_sign_in)
             page.route('**/get-session*', session_response)
             page.route('**/sign-out', successful_sign_out)
+            page.route('**/token*', api_token_response)
             def project_response(route):
                 project_tokens.append(route.request.headers.get('authorization'))
                 route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]}))
@@ -492,3 +497,4 @@ finally:
     except subprocess.TimeoutExpired: server.kill()
     log.close()
     local_config.cleanup()
+

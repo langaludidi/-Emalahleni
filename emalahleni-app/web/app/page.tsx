@@ -45,8 +45,9 @@ export default function Page() {
   function applyId(fields:Partial<IdFields>){const checked=idFieldsSchema.partial().parse(fields);if(checked.idNumber&&!validSaId(checked.idNumber))throw Error('Check the ID number against the document.');dirty();setForm(f=>({...f,applicant:{...f.applicant,...checked}}));setStatus('Selected ID details applied. Save the draft to keep them.');}
   async function run(action:()=>Promise<void>) { setBusy(true); try { await action(); } catch(e) { setStatus(e instanceof Error ? e.message : 'Unable to complete this action.'); } finally { setBusy(false); } }
   async function accessToken() {
-    // Neon injects its JWT into session.token, including cached sign-in responses.
-    const result=await auth.getSession();const token=result.data?.session?.token;
+    // A valid sign-in session can contain an opaque cookie token. Request the
+    // API JWT explicitly instead of depending on optional response headers.
+    const result=await auth.token();const token=result.data?.token;
     if(result.error || !token || token.split('.').length!==3)throw new Error('Sign out and sign in again to continue.');
     return token;
   }
@@ -179,3 +180,4 @@ export default function Page() {
     <div className="status" role="status" aria-live="polite">{busy?'Working…':status}</div><footer>Vectra Assure by Vectra Solutions · Development build · Synthetic data only</footer>
   </main>;
 }
+
