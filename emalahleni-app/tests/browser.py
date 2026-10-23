@@ -1,5 +1,5 @@
 """Desktop/mobile preview journeys against the local Worker; Auth is stubbed and no beneficiary data is used."""
-import base64, json, os, subprocess, time, shutil, tempfile
+import base64, json, os, subprocess, time, shutil, tempfile, re
 from pathlib import Path
 from urllib.request import urlopen
 from playwright.sync_api import sync_playwright, expect
@@ -38,8 +38,30 @@ try:
             page = browser.new_page(viewport={'width': width, 'height': height})
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
-            page.route('**/*neonauth*/**', lambda route: route.fulfill(status=200, content_type='application/json', body='null'))
+            initial_sessions = []
+            def initial_auth(route):
+                if '/get-session' in route.request.url and not initial_sessions:
+                    initial_sessions.append(route)
+                else:
+                    route.fulfill(status=200, content_type='application/json', body='null')
+            page.route('**/*neonauth*/**', initial_auth)
             page.goto(base, wait_until='domcontentloaded')
+            expect(page.get_by_role('status', name='Loading Vectra Assure')).to_be_visible()
+            page.screenshot(path=str(review / (label + '-splash.png')))
+            for attempt in range(60):
+                if initial_sessions: break
+                page.wait_for_timeout(50)
+            assert initial_sessions, 'Session lookup did not start'
+            initial_sessions[0].fulfill(status=200, content_type='application/json', body='null')
+            expect(page.get_by_role('heading', level=1)).to_contain_text('Every application.')
+            assert not page.get_by_label('First names', exact=True).is_visible()
+            assert not page.get_by_label('Email', exact=True).is_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-home.png')), full_page=True)
+            page.get_by_role('button', name='Open saved applications', exact=True).click()
+            expect(page.get_by_label('Email', exact=True)).to_be_visible()
+            assert page.get_by_role('button', name='Sign in', exact=True).is_disabled()
+            page.get_by_role('button', name='Explore the preview form', exact=True).click()
             page.get_by_label('First names', exact=True).fill('Synthetic')
             page.get_by_label('Surname', exact=True).fill('Example')
             page.get_by_label('South African ID number').fill('0000000000000')
@@ -188,7 +210,7 @@ try:
             page.route('**/api/projects', project_response)
             def wait_for_project():
                 try:
-                    page.get_by_label('Project').locator('option', has_text='Synthetic staging').wait_for(state='attached')
+                    page.get_by_role('combobox', name=re.compile(r'^Project')).locator('option', has_text='Synthetic staging').wait_for(state='attached')
                 except Exception:
                     print(json.dumps({'status':page.get_by_role('status').all_text_contents(),'scriptErrors':errors}), flush=True)
                     page.screenshot(path=str(review / (label + '-project-load-failure.png')), full_page=True)
@@ -206,7 +228,7 @@ try:
             page.screenshot(path=str(review / (label + '-signed-in.png')), full_page=True)
             page.reload(wait_until='domcontentloaded')
             wait_for_project()
-            assert page.get_by_label('Project').locator('option', has_text='Synthetic staging').count() == 1
+            assert page.get_by_role('combobox', name=re.compile(r'^Project')).locator('option', has_text='Synthetic staging').count() == 1
             assert len(project_tokens) >= 2 and all(token == 'Bearer ' + browser_token for token in project_tokens)
             assert not page.get_by_label('Email', exact=True).is_visible()
             page.locator('summary', has_text='Account').click()
@@ -291,7 +313,24 @@ try:
                     status, result = 404, {'error':'NOT_FOUND'}
                 route.fulfill(status=status, content_type='application/json', body=json.dumps(result))
             page.route('**/api/projects/synthetic-project/applications**', case_response)
-            page.get_by_label('Project').select_option('synthetic-project')
+            dashboard_fail = {'value':False}
+            dashboard_totals = {'total':121,'draft':100,'awaitingAssessment':10,'returned':7,'assessmentComplete':4}
+            def dashboard_response(route):
+                route.fulfill(status=503 if dashboard_fail['value'] else 200, content_type='application/json', body=json.dumps({'error':'UNAVAILABLE'} if dashboard_fail['value'] else {'generatedAt':'2026-10-23T10:00:00Z','applications':dashboard_totals,'evidence':{'total':12,'pendingUpload':1,'pendingScan':1,'scanFailed':1,'infected':1,'awaitingReview':4,'verified':4,'rejected':1},'recent':[{'id':'synthetic-case-1','reference':'SYN-NAV-001','version':1,'workflow_status':'DRAFT','updated_at':'2026-10-23T10:00:00Z'}] if stored_cases else []}))
+            page.route('**/api/projects/synthetic-project/dashboard', dashboard_response)
+            page.get_by_role('combobox', name=re.compile(r'^Project')).select_option('synthetic-project')
+            dashboard = page.get_by_role('region', name='Project dashboard')
+            expect(dashboard.locator('.metric').filter(has=page.get_by_role('heading', name='Applications', exact=True)).locator('strong')).to_have_text('121')
+            expect(dashboard.get_by_text('Scan needs retry', exact=True).locator('..').locator('dd')).to_have_text('1')
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-dashboard.png')), full_page=True)
+            dashboard_fail['value'] = True
+            page.get_by_role('button', name='Refresh dashboard', exact=True).click()
+            expect(dashboard.get_by_role('alert')).to_contain_text('could not be loaded')
+            assert dashboard.locator('.metric').count() == 0
+            dashboard_fail['value'] = False
+            page.get_by_role('button', name='Refresh dashboard', exact=True).click()
+            expect(dashboard.locator('.metric')).to_have_count(4)
             page.get_by_role('button', name='New form', exact=True).click()
             page.get_by_label('Synthetic case reference', exact=True).fill('SYN-NAV-001')
             page.get_by_label('First names', exact=True).fill('Synthetic')
@@ -311,6 +350,13 @@ try:
             assert page.get_by_label('House type', exact=True).input_value() == 'Synthetic structure'
             page.get_by_role('button', name='Save current form', exact=True).click()
             page.get_by_text('Draft saved · version 0', exact=True).wait_for()
+            page.get_by_role('button', name='Home', exact=True).click()
+            expect(dashboard.get_by_role('button', name='Open SYN-NAV-001')).to_be_visible()
+            page.get_by_label('Filter recent applications', exact=True).fill('missing-reference')
+            expect(dashboard.get_by_text('No recent applications match this reference.', exact=True)).to_be_visible()
+            page.get_by_label('Filter recent applications', exact=True).fill('SYN-NAV-001')
+            page.get_by_role('button', name='Open SYN-NAV-001', exact=True).click()
+            expect(page.get_by_label('Surname', exact=True)).to_have_value('Original')
             page.get_by_role('button', name='Home', exact=True).click()
             page.get_by_role('button', name='New form', exact=True).click()
             page.get_by_role('heading', name='Applicant', exact=True).wait_for()
@@ -348,7 +394,7 @@ try:
             page.get_by_role('button', name='Home', exact=True).click()
             page.reload(wait_until='domcontentloaded')
             wait_for_project()
-            page.get_by_label('Project').select_option('synthetic-project')
+            page.get_by_role('combobox', name=re.compile(r'^Project')).select_option('synthetic-project')
             page.get_by_label('Existing draft').select_option('synthetic-case-1')
             page.get_by_label('Surname', exact=True).wait_for()
             assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
@@ -480,9 +526,12 @@ try:
             page.screenshot(path=str(review / (label + '-capture-navigation.png')), full_page=True)
             page.once('dialog', lambda dialog: dialog.accept())
             page.get_by_role('button', name='Log out', exact=True).click()
+            expect(page.get_by_role('heading', level=1)).to_contain_text('Every application.')
+            assert not page.get_by_role('region', name='Project dashboard').is_visible()
+            page.get_by_role('button', name='Sign in to get started', exact=True).click()
             page.get_by_label('Email', exact=True).wait_for()
             assert page.get_by_role('button', name='Forgot password', exact=True).is_visible()
-            assert not page.get_by_label('Project').is_visible()
+            assert not page.get_by_role('combobox', name=re.compile(r'^Project')).is_visible()
             assert not page.get_by_role('button', name='Resume form', exact=True).is_visible()
             assert not page.get_by_label('First names', exact=True).is_visible()
             assert not signed_in['value']

@@ -11,6 +11,7 @@ import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-documen
 import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
 import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
+import {projectDashboard} from './dashboard';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -89,6 +90,11 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       const [rows] = await db.forActor(actor, [{ query: 'SELECT p.id,p.code,p.name,m.role FROM public.projects p JOIN public.project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 AND m.active ORDER BY p.name', params: [actor] }]);
       return json({ projects: rows });
     }
+    const dashboardRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
+    if(dashboardRoute){
+      if(request.method!=='GET')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      return json(await projectDashboard(db,actor,z.uuid().parse(dashboardRoute[1])));
+    }
     const route = path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications(?:\/([0-9a-f-]+))?(?:\/(readiness|dohs|export)(?:\/([A-Z_0-9]+))?)?$/i);
     if (!route) throw new HttpError(404, 'NOT_FOUND');
     const project = z.uuid().parse(route[1]); const id = route[2] ? z.uuid().parse(route[2]) : undefined;
@@ -154,3 +160,4 @@ return async function handle(request: Request, env: Env): Promise<Response> {
 }
 export const handle = createHandler();
 export default { fetch: handle } satisfies ExportedHandler<Env>;
+
