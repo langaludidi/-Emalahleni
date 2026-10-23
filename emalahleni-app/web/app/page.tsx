@@ -10,6 +10,10 @@ import {formSchema} from '../../src/contracts';
 import {evaluate} from '../../src/rules';
 import type {PhotoProposal} from '../../src/photo-metadata';
 import {idFieldsSchema,validSaId,type IdFields} from '../../src/id-reading';
+import HomeScreen from './home-screen';
+import Dashboard from './project-dashboard';
+import SplashScreen from './splash-screen';
+import type {ProjectDashboard} from '../../src/dashboard';
 
 const authUrl = 'https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth';
 type Project = { id: string; name: string; code: string; role: string };
@@ -24,8 +28,12 @@ function formSnapshot(form:CaseForm,reference:string) { return JSON.stringify({f
 
 export default function Page() {
   const [step,setStep] = useState(0); const [form,setForm] = useState<CaseForm>(blankForm());
-  const [mode,setMode] = useState<'preview'|'connected'>('preview'); const [user,setUser] = useState('');
-  const [view,setView] = useState<'home'|'capture'>('capture'); const [resumeAvailable,setResumeAvailable] = useState(false);
+  const [mode,setMode] = useState<'preview'|'connected'>('connected'); const [user,setUser] = useState('');
+  const [view,setView] = useState<'home'|'capture'>('home'); const [resumeAvailable,setResumeAvailable] = useState(false);
+  const [sessionReady,setSessionReady] = useState(false); const [connectionOpen,setConnectionOpen] = useState(false);
+  const [dashboard,setDashboard] = useState<{projectId:string;data:ProjectDashboard}|null>(null);
+  const [dashboardLoading,setDashboardLoading] = useState(false); const [dashboardError,setDashboardError] = useState('');
+  const [dashboardRevision,setDashboardRevision] = useState(0);
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('');
   const [verificationNeeded,setVerificationNeeded] = useState(false);
   const [verificationSent,setVerificationSent] = useState(false); const [verificationCode,setVerificationCode] = useState('');
@@ -33,7 +41,7 @@ export default function Page() {
   const [resetCode,setResetCode] = useState(''); const [newPassword,setNewPassword] = useState(''); const [confirmPassword,setConfirmPassword] = useState('');
   const [projects,setProjects] = useState<Project[]>([]); const [project,setProject] = useState('');
   const [cases,setCases] = useState<Case[]>([]); const [active,setActive] = useState<Case|null>(null);
-  const [reference,setReference] = useState('SYN-'); const [status,setStatus] = useState('Preview mode · changes stay in this tab.');
+  const [reference,setReference] = useState('SYN-'); const [status,setStatus] = useState('Sign in to access your applications, or explore the preview form.');
   const [savedSnapshot,setSavedSnapshot] = useState(()=>formSnapshot(blankForm(),'SYN-'));
   const unsaved = formSnapshot(form,reference)!==savedSnapshot;
   const [busy,setBusy] = useState(false); const [readiness,setReadiness] = useState<Readiness|null>(null);
@@ -71,7 +79,20 @@ export default function Page() {
     const objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=`${data.reference}-${pack?'draft-pack':'verification-summary'}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setStatus(pack?'Draft pack generated from verified, clean evidence. Submission remains unapproved.':'Verification summary generated.');
   }
   async function loadProjects() { const result=await api('/api/projects');setProjects(result.projects);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
-  useEffect(()=> { let live=true; auth.getSession().then(async result=>{if(live && result.data?.user){setUser(result.data.user.name || result.data.user.email);setMode('connected');setView('home');await run(loadProjects);}}).catch(()=>{});return()=>{live=false}; },[auth]);
+  useEffect(()=> {
+    let live=true;
+    // Session lookup must not trap a visitor behind a loading screen on a poor connection.
+    const fallback=window.setTimeout(()=>{if(live){live=false;setSessionReady(true);}},8000);
+    auth.getSession().then(async result=>{if(!live)return;window.clearTimeout(fallback);setSessionReady(true);if(result.data?.user){setUser(result.data.user.name || result.data.user.email);setMode('connected');setView('home');await run(loadProjects);}}).catch(()=>{}).finally(()=>{if(live){window.clearTimeout(fallback);setSessionReady(true);}});
+    return()=>{live=false;window.clearTimeout(fallback);};
+  },[auth]);
+  useEffect(()=>{
+    let live=true;setDashboard(null);setDashboardError('');
+    if(view!=='home'||mode!=='connected'||!user||!project){setDashboardLoading(false);return;}
+    setDashboardLoading(true);
+    api(`/api/projects/${project}/dashboard`).then(result=>{if(live)setDashboard({projectId:project,data:result});}).catch(()=>{if(live)setDashboardError('The project overview could not be loaded. Your applications are still available above.');}).finally(()=>{if(live)setDashboardLoading(false);});
+    return()=>{live=false;};
+  },[view,mode,user,project,dashboardRevision]);
   useEffect(()=>{if(!unsaved)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[unsaved]);
   function showVerification() { setVerificationNeeded(true);setVerificationSent(false);setVerificationCode('');setStatus('Verify your email before signing in. Request a code below.'); }
   async function signIn() {
@@ -86,7 +107,7 @@ export default function Page() {
     if(!confirmDiscard('Log out'))return;
     const result=await auth.signOut();if(result.error)throw new Error(result.error.message || 'Unable to sign out. Please try again.');
     setUser('');setPassword('');setRecovering(false);clearRecovery();setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
-    setProjects([]);setCases([]);setProject('');clearCapture();setView('home');setMode('connected');setStatus('Signed out.');
+    setProjects([]);setCases([]);setProject('');setDashboard(null);setConnectionOpen(false);clearCapture();setView('home');setMode('connected');setStatus('Signed out.');
   }
   async function sendVerification() {
     const result=await auth.emailOtp.sendVerificationOtp({email,type:'email-verification'});
@@ -124,14 +145,24 @@ export default function Page() {
   function home() { setResumeAvailable(true);setView('home');setStatus(unsaved?'Your unsaved form is kept in this tab. Choose Resume form to continue.':'Choose Resume form, open a saved draft or start a new form.');window.scrollTo({top:0}); }
   function newForm() { if(!confirmDiscard('Start a new form'))return;clearCapture();setView('capture');setStatus(mode==='preview'?'New preview form · changes stay in this tab.':'New form. Enter a synthetic reference before saving.');window.scrollTo({top:0}); }
   async function changeMode(next:'preview'|'connected') {
-    if(next===mode){if(user&&next==='connected')await loadProjects();return;}
-    if(!confirmDiscard('Switch workspace'))return;
+    if(next===mode){if(next==='preview')setView('capture');else setConnectionOpen(true);if(user&&next==='connected')await loadProjects();return true;}
+    if(!confirmDiscard('Switch workspace'))return false;
     clearCapture();setProject('');setCases([]);setMode(next);setView(next==='preview'?'capture':'home');
-    setStatus(next==='preview'?'Preview mode · changes stay in this tab.':'Sign in to access your applications.');if(user&&next==='connected')await loadProjects();
+    setConnectionOpen(next==='connected');setStatus(next==='preview'?'Preview mode · changes stay in this tab.':'Sign in to access your applications.');if(user&&next==='connected')await loadProjects();return true;
+  }
+  async function openWorkspace(action:'new'|'saved') {
+    if(mode!=='connected'&&!await changeMode('connected'))return;
+    setConnectionOpen(true);
+    if(mode==='connected'&&user&&project&&action==='new'&&editable){newForm();return;}
+    requestAnimationFrame(()=>{
+      const selector=!user?'input[autocomplete="username"]':project&&action==='saved'?'#draft-picker':'#project-picker';
+      const control=document.querySelector<HTMLElement>(selector);
+      control?.scrollIntoView({block:'center',behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});control?.focus({preventScroll:true});
+    });
   }
   async function selectProject(id:string) {
     if(!confirmDiscard('Change project'))return;
-    const result=id?await api(`/api/projects/${id}/applications`):{applications:[]};clearCapture();setProject(id);setCases(result.applications);setView('home');
+    const result=id?await api(`/api/projects/${id}/applications`):{applications:[]};clearCapture();setProject(id);setCases(result.applications);setView('home');setStatus(id?'Project selected. Start a form or open a saved application.':'Choose a project to begin.');
   }
   async function loadCase(id:string) {
     if(!confirmDiscard('Open another draft'))return;
@@ -144,10 +175,11 @@ export default function Page() {
     setStep(3);
   }
   const editable = mode==='preview' || ['ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER'].includes(projects.find(p=>p.id===project)?.role ?? '');
+  if(!sessionReady)return <SplashScreen/>;
   return <main>
     <header><div className="brand"><img className="brand-logo" src="/brand/vectra-assure-logo.png" alt="Vectra Assure" width={210} height={54} fetchPriority="high"/><small>by Vectra Solutions</small></div>{user?<details className="account-menu"><summary>Account</summary><div className="account-actions"><span>Signed in as {user}</span><button className="secondary" disabled={busy} onClick={()=>run(loadProjects)}>Refresh projects</button><button className="secondary" disabled={busy} onClick={()=>run(signOut)}>Sign out</button></div></details>:<span className="pill">Development workspace</span>}</header>
-    {(view==='home'||mode==='preview')&&<section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p>{view==='home'?<><h1>Your workspace</h1><p>Start an application, resume your form or open a saved draft.</p></>:<><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></>}</section>}
-    {(view==='home'||mode==='preview'||!user)&&<section className="connection" aria-label="Workspace connection"><div className="mode"><button disabled={busy} className={mode==='preview'?'selected':''} onClick={()=>run(()=>changeMode('preview'))}>Preview form</button><button disabled={busy} className={mode==='connected'?'selected':''} onClick={()=>run(()=>changeMode('connected'))}>Connected workspace</button></div>
+    {view==='home'?<HomeScreen signedIn={!!user} busy={busy} start={()=>run(()=>openWorkspace('new'))} saved={()=>run(()=>openWorkspace('saved'))} preview={()=>run(async()=>{await changeMode('preview');})}/>:mode==='preview'&&<section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>}
+    {(view==='home'?(!!user||connectionOpen||resumeAvailable):(mode==='preview'||!user))&&<section id="workspace-access" className="connection" aria-label="Workspace connection"><div className="mode"><button disabled={busy} className={mode==='preview'?'selected':''} onClick={()=>run(async()=>{await changeMode('preview');})}>Preview form</button><button disabled={busy} className={mode==='connected'?'selected':''} onClick={()=>run(async()=>{await changeMode('connected');})}>Connected workspace</button></div>
       {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:!user&&<div className="login"><Field label="Email"><input type="email" autoComplete="username" disabled={busy} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>{!recovering&&<><Field label="Password"><input type="password" autoComplete="current-password" disabled={busy} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button disabled={busy||!email||!password} onClick={()=>run(signIn)}>Sign in</button></>}<button className="secondary" disabled={busy} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button></div>}
       {mode==='connected'&&!user&&<p className="hint" role="status">{busy?'Working…':status}</p>}
       {mode==='connected'&&!user&&recovering&&<fieldset aria-label="Password recovery" disabled={busy}>
@@ -162,9 +194,12 @@ export default function Page() {
         <button disabled={resetCode.length!==6||newPassword.length<8||newPassword.length>128||newPassword!==confirmPassword} onClick={()=>run(resetPassword)}>Set new password</button></>}
       </fieldset>}
       {mode==='connected'&&!user&&verificationNeeded&&<fieldset aria-label="Email verification" disabled={busy}><h3>Verify your email</h3><p>Request a code for {email}, then enter it here.</p><button className="secondary" disabled={!email} onClick={()=>run(sendVerification)}>{verificationSent?'Send a new verification code':'Send verification code'}</button>{verificationSent&&<><Field label="Email verification code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={verificationCode} onChange={e=>setVerificationCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field><button disabled={verificationCode.length!==6} onClick={()=>run(verifyEmail)}>Verify email</button></>}</fieldset>}
-      {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select value={project} disabled={busy} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select value={active?.id??''} disabled={busy||!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):newForm()}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field></div>}
+      {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select id="project-picker" value={project} disabled={busy} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select id="draft-picker" value={active?.id??''} disabled={busy||!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):newForm()}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field></div>}
     </section>}
-    {view==='home'?<section className="card home-card" aria-label="Applications"><h2>Applications</h2><p>{mode==='preview'?'Preview forms stay in this tab.':!user?'Sign in above to access your saved drafts.':!project?'Choose a project above to start a form or open a saved draft.':'Start a new form or choose an existing draft above. Saved drafts remain available when you start another form.'}</p>{resumeAvailable&&<p className="hint">{unsaved?'Your current form has unsaved changes and is kept in this tab.':active?`Current draft: ${active.reference}`:'Your current form is available to resume.'}</p>}<div className="home-actions">{resumeAvailable&&<button disabled={busy} onClick={()=>{setView('capture');window.scrollTo({top:0});}}>Resume form</button>}<button className="secondary" disabled={busy||(mode==='connected'&&(!user||!project||!editable))} onClick={newForm}>New form</button>{user&&<button className="secondary" disabled={busy} onClick={()=>run(signOut)}>Log out</button>}</div></section>:<>
+    {view==='home'?<>
+    {(user||resumeAvailable)&&<section className="card home-card" aria-label="Applications"><h2>Applications</h2><p>{mode==='preview'?'Preview forms stay in this tab.':!user?'Sign in above to access your saved drafts.':!project?'Choose a project above to start a form or open a saved draft.':'Start a new form or choose an existing draft above. Saved drafts remain available when you start another form.'}</p>{resumeAvailable&&<p className="hint">{unsaved?'Your current form has unsaved changes and is kept in this tab.':active?`Current draft: ${active.reference}`:'Your current form is available to resume.'}</p>}<div className="home-actions">{resumeAvailable&&<button disabled={busy} onClick={()=>{setView('capture');window.scrollTo({top:0});}}>Resume form</button>}<button className="secondary" disabled={busy||(mode==='connected'&&(!user||!project||!editable))} onClick={newForm}>New form</button>{user&&<button className="secondary" disabled={busy} onClick={()=>run(signOut)}>Log out</button>}</div></section>}
+    {mode==='connected'&&user&&project&&<Dashboard key={project} data={dashboard?.projectId===project?dashboard.data:null} loading={dashboardLoading} error={dashboardError} projectName={projects.find(p=>p.id===project)?.name??'Project'} refresh={()=>setDashboardRevision(value=>value+1)} open={id=>run(()=>loadCase(id))} busy={busy}/>}
+    </>:<>
     <nav className="capture-actions" aria-label="Capture actions"><button className="secondary" disabled={busy} onClick={home}>Home</button><button className="secondary" disabled={busy||(mode==='connected'&&(!project||!editable))} onClick={newForm}>New form</button>{mode==='connected'&&user&&<button aria-label="Save current form" disabled={busy||!project||!editable} onClick={()=>run(save)}>Save draft</button>}{user&&<button className="secondary" disabled={busy} onClick={()=>run(signOut)}>Log out</button>}</nav>
     <nav className="steps" aria-label="Verification steps">{steps.map((name,i)=><button key={name} className={step===i?'active':''} aria-current={step===i?'step':undefined} onClick={()=>setStep(i)}><span>{i+1}</span>{name}</button>)}</nav>
     <div className="workspace"><section className="card form-card"><div className="section-heading"><p className="eyebrow">STEP {step+1} OF 4</p><h2>{steps[step]}</h2></div>
