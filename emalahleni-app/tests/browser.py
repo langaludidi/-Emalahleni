@@ -222,9 +222,10 @@ try:
             page.route('**/get-session*', session_response)
             page.route('**/sign-out', successful_sign_out)
             page.route('**/token*', api_token_response)
+            project_role = {'value':'OFFICER'}
             def project_response(route):
                 project_tokens.append(route.request.headers.get('authorization'))
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':'OFFICER'}]}))
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':project_role['value']}]}))
             page.route('**/api/projects', project_response)
             def wait_for_project():
                 try:
@@ -258,6 +259,9 @@ try:
             stored_cases = {}
             writes = []
             fail_save = {'value':False}
+            readiness_version = {'offset':0}
+            delayed_uploads = []
+            department_reviews, department_writes = [], []
             upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'service_error':None,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False,'retry_failure':None}
             evidence_documents, upload_intents, uploaded_bytes = [], [], []
             id_reads = []
@@ -295,18 +299,40 @@ try:
                     result = {'id':'synthetic-document','status':'PENDING_REVIEW','malware_status':'CLEAN'}
                     if upload_state['fail_refresh_after_upload']:
                         upload_state['fail_register'] = True
+                    if upload_state.get('hold_upload'):
+                        delayed_uploads.append((route,result))
+                        return
                 elif suffix.endswith('/evidence/synthetic-document/scan') and method == 'POST':
                     failed = upload_state['retry_failure']
                     evidence_documents[0].update(status='PENDING_SCAN' if failed else 'PENDING_REVIEW', malware_status='SCAN_FAILED' if failed else 'CLEAN')
                     result = {**evidence_documents[0], **({'scanFailure':failed} if failed else {})}
+                elif suffix.endswith('/evidence/synthetic-document/review') and method == 'PUT':
+                    body = route.request.post_data_json
+                    assert body['decision']=='VERIFIED' and body['contentConfirmed'] and body['certificationConfirmed']
+                    evidence_documents[0].update(status='VERIFIED',reviewed_by='synthetic-assessor')
+                    result = evidence_documents[0]
                 elif suffix.endswith('/evidence/synthetic-document/read-id') and method == 'POST':
                     id_reads.append(suffix)
                     if upload_state['fail_reading']:
                         status, result = 503, {'error':'ID_READING_UNAVAILABLE'}
                     else:
                         result = {'evidenceId':'synthetic-document','sha256':'a'*64,'fields':{'firstNames':'READ SYNTHETIC','surname':'READ EXAMPLE','idNumber':synthetic_id},'dateOfBirth':'1990-01-01','warnings':['Check every proposed value against the original ID.'],'requiresConfirmation':True}
+                elif suffix.endswith('/readiness') and method == 'GET':
+                    current = stored_cases[suffix.split('/')[0]]
+                    result = {'formVersion':current['version']+readiness_version['offset'],'ruleVersion':'synthetic','provisional':True,'readiness':'AMBER','ourTeamReady':False,'departmentalReady':False,'submissionReady':False,'issues':[],'requirements':[]}
+                elif '/dohs/' in suffix and method == 'PUT':
+                    body = route.request.post_data_json
+                    target = suffix.rsplit('/',1)[1]
+                    prior = next((review for review in department_reviews if review['section']==target),None)
+                    department_writes.append(body)
+                    if body['expectedReviewedAt'] != (prior['reviewed_at'] if prior else None):
+                        status, result = 409, {'error':'DEPARTMENT_REVIEW_CHANGED_OR_UNAVAILABLE'}
+                    else:
+                        result = {'section':target,'state':body['state'],'note':body['note'],'reviewed_at':'2026-10-24T12:30:00.000001Z'}
+                        if prior: department_reviews.remove(prior)
+                        department_reviews.append(result)
                 elif suffix.endswith('/dohs'):
-                    status, result = (503, {'error':'TEST_DEPARTMENT_UNAVAILABLE'}) if upload_state['fail_department'] else (200, {'reviews':[]})
+                    status, result = (503, {'error':'TEST_DEPARTMENT_UNAVAILABLE'}) if upload_state['fail_department'] else (200, {'reviews':department_reviews})
                 elif method == 'GET' and not suffix:
                     result = {'applications':[{key:item[key] for key in ['id','reference','version','workflow_status']} for item in stored_cases.values()]}
                 elif method == 'POST' and not suffix:
@@ -372,6 +398,10 @@ try:
             assert page.get_by_label('House type', exact=True).input_value() == 'Synthetic structure'
             page.get_by_role('button', name='Save current form', exact=True).click()
             page.get_by_text('Draft saved · version 0', exact=True).wait_for()
+            saved_write_count = len(writes)
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft already up to date · version 0', exact=True).wait_for()
+            assert len(writes) == saved_write_count
             page.get_by_role('button', name='Home', exact=True).click()
             expect(dashboard.get_by_role('button', name='Open SYN-NAV-001')).to_be_visible()
             expect(dashboard.get_by_text('Showing 1 most recently updated application.', exact=False)).to_be_visible()
@@ -401,6 +431,13 @@ try:
             assert writes == [('POST','synthetic-case-1'),('POST','synthetic-case-2')]
             assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Original'
             page.get_by_role('button', name='Home', exact=True).click()
+            stored_cases['synthetic-case-2']['workflow_status'] = 'SUBMITTED_FOR_ASSESSMENT'
+            page.get_by_label('Existing draft').select_option('synthetic-case-2')
+            expect(page.get_by_label('First names', exact=True)).to_be_disabled()
+            assert page.get_by_role('button', name='Save current form', exact=True).is_disabled()
+            assert page.get_by_role('button', name='New form', exact=True).is_enabled()
+            page.get_by_role('button', name='Home', exact=True).click()
+            stored_cases['synthetic-case-1']['workflow_status'] = 'RETURNED'
             page.get_by_label('Existing draft').select_option('synthetic-case-1')
             page.get_by_label('Surname', exact=True).wait_for()
             assert page.get_by_label('Surname', exact=True).input_value() == 'Original'
@@ -415,6 +452,7 @@ try:
             assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
             page.get_by_role('button', name='Save current form', exact=True).click()
             page.get_by_text('Draft saved · version 1', exact=True).wait_for()
+            expect(page.locator('.capture-state')).to_contain_text('returned')
             page.get_by_role('button', name='Home', exact=True).click()
             page.reload(wait_until='domcontentloaded')
             wait_for_project()
@@ -422,6 +460,25 @@ try:
             page.get_by_label('Existing draft').select_option('synthetic-case-1')
             page.get_by_label('Surname', exact=True).wait_for()
             assert page.get_by_label('Surname', exact=True).input_value() == 'Changed'
+            # Save-and-evidence handoff stops on a failed save and uses the saved version.
+            steps.nth(2).click()
+            page.get_by_label('House type', exact=True).fill('Updated synthetic structure')
+            fail_save['value'] = True
+            page.get_by_role('button', name='Save and open evidence', exact=True).click()
+            page.get_by_text('TEST_SAVE_FAILED', exact=True).wait_for()
+            assert page.get_by_role('heading', name='Site verification', exact=True).is_visible()
+            assert page.get_by_label('House type', exact=True).input_value() == 'Updated synthetic structure'
+            page.get_by_role('button', name='Save and open evidence', exact=True).click()
+            expect(page.get_by_role('heading', name='Documents & readiness', exact=True)).to_be_visible()
+            readonly_writes = list(writes)
+            readiness_version['offset'] = 1
+            page.get_by_role('button', name='Check readiness', exact=True).click()
+            page.get_by_text('This application changed since it was loaded. Open the latest saved draft before checking readiness.', exact=True).wait_for()
+            assert writes == readonly_writes
+            readiness_version['offset'] = 0
+            page.get_by_role('button', name='Check readiness', exact=True).click()
+            expect(page.get_by_role('heading', name='Next actions', exact=True)).to_be_visible()
+            assert writes == readonly_writes
             # Evidence capability comes from the server, not the officer role or file chooser.
             steps.nth(3).click()
             uploader = page.get_by_role('group', name='Upload evidence', exact=True)
@@ -464,6 +521,12 @@ try:
             picker.set_input_files({'name':'synthetic-id.pdf','mimeType':'application/pdf','buffer':synthetic_pdf})
             uploader.get_by_text('Selected: synthetic-id.pdf. Not uploaded yet. Press Upload and scan to add it to the case.', exact=True).wait_for()
             assert upload_intents == [] and evidence_documents == []
+            page.get_by_role('button', name='Home', exact=True).click()
+            page.get_by_role('button', name='Resume form', exact=True).click()
+            assert picker.evaluate('element => element.files[0].name') == 'synthetic-id.pdf'
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='New form', exact=True).click()
+            assert picker.evaluate('element => element.files[0].name') == 'synthetic-id.pdf'
             # A configuration change between selection and submission is reported next to the button.
             upload_state['fail_intent'] = True
             upload_button.click()
@@ -474,7 +537,17 @@ try:
             picker.wait_for(state='visible')
             expect(picker).to_be_enabled()
             # The acknowledgement remains successful if the following register refresh fails.
+            upload_state['hold_upload'] = True
             upload_button.click()
+            expect(page.get_by_role('button', name='Home', exact=True)).to_be_disabled()
+            assert steps.nth(0).is_disabled()
+            for attempt in range(100):
+                if delayed_uploads: break
+                page.wait_for_timeout(50)
+            assert len(delayed_uploads) == 1
+            pending_route, pending_result = delayed_uploads.pop()
+            upload_state['hold_upload'] = False
+            pending_route.fulfill(status=200, content_type='application/json', body=json.dumps(pending_result))
             uploader.get_by_text('Uploaded and scanned. Assessor review is still required. The register could not refresh. Use Refresh evidence and reviews to check the saved document.', exact=True).wait_for()
             assert uploaded_bytes == [synthetic_pdf]
             assert picker.input_value() == '' and upload_button.is_disabled()
@@ -530,11 +603,53 @@ try:
             assert page.locator('aside .summary h3').inner_text() == 'Corrected Synthetic Changed'
             assert not proposal.is_visible()
             page.get_by_role('button', name='Save current form', exact=True).click()
-            page.get_by_text('Draft saved · version 2', exact=True).wait_for()
+            page.get_by_text('Draft saved · version 3', exact=True).wait_for()
             assert stored_cases['synthetic-case-1']['form']['applicant']['firstNames'] == 'Corrected Synthetic'
             assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Changed'
             assert stored_cases['synthetic-case-1']['form']['applicant']['idNumber'] == synthetic_id
             assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
+            project_role['value'] = 'ASSESSOR'
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Refresh projects', exact=True).click()
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Review document', exact=True).click()
+            expect(page.get_by_label('Document awaiting review', exact=False)).to_have_value('synthetic-document')
+            page.get_by_label('Evidence review note · at least 10 characters', exact=True).fill('Synthetic original and certification checked.')
+            page.get_by_label('Content, applicant match and applicable signatures / commissioning checked', exact=True).check()
+            assert page.get_by_role('button', name='Record evidence decision', exact=True).is_disabled()
+            page.get_by_label('ID certification confirmed where required', exact=True).check()
+            page.get_by_role('button', name='Record evidence decision', exact=True).click()
+            page.get_by_text('Evidence review recorded.', exact=True).wait_for()
+            expect(page.locator('.evidence-register').get_by_text('applicant id · verified · clean', exact=True)).to_be_visible()
+            # Department drafts retain their edit-start token even after a register refresh.
+            department_reviews.append({'section':'PAGE_2','state':'COMPLETE','note':'Existing synthetic section decision.','reviewed_at':'2026-10-24T12:00:00.000001Z'})
+            project_role['value'] = 'DOHS_REVIEWER'
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Refresh projects', exact=True).click()
+            page.locator('summary', has_text='Account').click()
+            refresh_evidence.click()
+            expect(page.get_by_role('combobox', name='Section outcome', exact=True)).to_have_value('COMPLETE')
+            expect(page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True)).to_have_value('Existing synthetic section decision.')
+            assert page.get_by_role('button', name='Save current form', exact=True).is_disabled()
+            assert not page.get_by_role('region', name='Applicant ID reading', exact=True).is_visible()
+            page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True).fill('My pending synthetic section decision.')
+            department_reviews[0].update(note='Concurrent synthetic section decision.',reviewed_at='2026-10-24T12:15:00.000001Z')
+            refresh_evidence.click()
+            expect(page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True)).to_have_value('My pending synthetic section decision.')
+            page.get_by_role('button', name='Record departmental decision', exact=True).click()
+            page.get_by_text('This section changed since editing started. Your note is retained. Use Reload selected section to load the current decision.', exact=True).wait_for()
+            assert department_writes[-1]['expectedReviewedAt'] == '2026-10-24T12:00:00.000001Z'
+            page.once('dialog', lambda dialog: dialog.accept())
+            page.get_by_role('button', name='Reload selected section', exact=True).click()
+            expect(page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True)).to_have_value('Concurrent synthetic section decision.')
+            page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True).fill('Reconciled synthetic section decision.')
+            page.get_by_role('button', name='Record departmental decision', exact=True).click()
+            page.get_by_text('Departmental section decision recorded.', exact=True).wait_for()
+            assert department_writes[-1]['expectedReviewedAt'] == '2026-10-24T12:15:00.000001Z'
+            project_role['value'] = 'ASSESSOR'
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Refresh projects', exact=True).click()
+            page.locator('summary', has_text='Account').click()
             steps.nth(0).click()
             page.get_by_label('Surname', exact=True).fill('Discarded change')
             page.once('dialog', lambda dialog: dialog.accept())

@@ -22,6 +22,10 @@ npm run dev
 
 Open http://localhost:8787. The preview form works without credentials. Preview entries stay in memory and disappear when the tab closes. The frontend is a static Next.js export; the API runs in the Cloudflare Worker on the same origin.
 
+## Workflow and domain operations
+
+Use [WORKFLOWS.md](WORKFLOWS.md) for capture, evidence, assessor/DoHS handoffs, version conflicts and uncertain-write recovery. The selected platform domain is `app.vectrasa.co.za`; [DOMAIN_SETUP.md](DOMAIN_SETUP.md) records the DNS/mail preservation plan and the pending Cloudflare zone activation. The root domain remains available for Vectra Solutions. The app's existing workers.dev address remains available.
+
 ## Capture navigation
 
 The capture toolbar provides **Home**, **New form**, **Save draft** for connected captures, and **Log out** when signed in. Home keeps the current form in this tab and offers **Resume form**; it does not save automatically. New form clears all capture sections, the case reference and the active draft while retaining the selected project and its saved drafts. Starting over, changing project/workspace, opening another draft or logging out requires confirmation when the current form has unsaved changes. Save successfully before leaving if those changes must be retained. Saved drafts can be reopened from the home workspace.
@@ -91,3 +95,4 @@ The site step can read embedded JPEG/PNG GPS and camera dates with exifr. Extrac
 Verification summaries use react-pdf. Preview summaries are marked unsaved; recorded-case summaries and evidence packs are marked draft and never imply submission approval. Export snapshots are read consistently from the database and use the current backend rules. pdf-lib combines only verified, clean evidence, checks downloaded hashes, and rechecks the case fingerprint before completing the pack. Packs are limited to 20 evidence documents, 25 MB and 200 pages. PDF form values are flattened and interactive annotations omitted from copies; original stored evidence is unchanged.
 
 See THIRD_PARTY_LICENSES.md for MIT notices. GitHub's `Emalahleni build and browser checks` workflow runs type checks, tests, a dry-run build and desktop/mobile Chromium journeys. The browser journey also downloads a generated verification summary. The version 0.2 browser run passed; this is not a test on a physical iPhone.
+
