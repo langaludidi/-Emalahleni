@@ -31,6 +31,8 @@ Home keeps capture and in-progress document input in the current tab. Moving out
 - Assessor: choose a clean pending document, or use its Review document action. Verify the original, content and required certification before recording a decision. Rejections require a review note too.
 - DoHS reviewer: record section decisions separately; capture and assessor roles do not inherit departmental authority.
 
+Refreshing the register retains edited ID suggestions and unrecorded review input. ID suggestions cannot be applied while the evidence register is unavailable; if the source ID is no longer clean and available, its suggestions are removed without changing the form. Switching review documents or reading another ID asks before discarding pending input. Reopening the same assessor document keeps the current note. Use **Clear evidence review** to deliberately discard an unrecorded decision. Review writes are held until the corresponding register has loaded successfully.
+
 Review notes and departmental decisions are saved with their own explicit Record actions; Save draft saves capture fields. Use Refresh evidence and reviews after an uncertain response before repeating a mutation.
 
 ## Concurrency and exceptions
