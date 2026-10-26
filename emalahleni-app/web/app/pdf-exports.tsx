@@ -1,5 +1,6 @@
 import React from 'react';
 import type {ExportSnapshot} from '../../src/export-contracts';
+import {reviewCurrent} from '../../src/rules';
 import {packEvidence} from '../../src/export-contracts';
 export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  const {Document,Page,Text,View,StyleSheet,pdf}=await import('@react-pdf/renderer');
@@ -14,15 +15,15 @@ export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  <Text style={styles.heading}>Site verification</Text>{row('House type',s.houseType)}{row('House type confirmed',s.houseTypeConfirmed?'Yes':'No')}{row('Latitude / longitude',`${s.latitude??'—'} / ${s.longitude??'—'}`)}{row('Verification date',s.verificationDate)}{row('Photo parameters confirmed',s.photoParametersConfirmed?'Yes':'No')}{row('Recommendation',s.recommendation)}
  <Text style={styles.heading}>Readiness and next actions</Text>{row('Our team',snapshot.readiness.ourTeamReady?'Ready':'Outstanding actions')}{row('Departmental work',snapshot.readiness.departmentalReady?'Complete':'Outstanding actions')}{row('Submission readiness','Not approved — provisional rules')}{row('Rule version',snapshot.readiness.ruleVersion)}
  {snapshot.readiness.issues.map(issue=><Text key={issue.code} style={styles.issue}>{issue.owner==='DOHS'?'DoHS':'Our team'}: {issue.message}</Text>)}
- <Text style={styles.heading}>Evidence register</Text>{snapshot.evidence.length?snapshot.evidence.map(e=><Text key={e.id} style={styles.issue}>{e.filename} · {e.kind} · {e.status} · scan {e.malware_status}{e.reviewed_by?` · reviewer ${e.reviewed_by}`:''}</Text>):<Text>No supporting evidence recorded.</Text>}
- <Text style={styles.heading}>DoHS section decisions</Text>{snapshot.reviews.length?snapshot.reviews.map(r=><Text key={r.section} style={styles.issue}>{r.section}: {r.state} · {r.note}</Text>):<Text>No departmental decisions recorded.</Text>}
+ <Text style={styles.heading}>Evidence register</Text>{snapshot.evidence.length?snapshot.evidence.map(e=><Text key={e.id} style={styles.issue}>{e.filename} · {e.kind} · {e.status==='VERIFIED'&&!reviewCurrent(e,snapshot.version)?'REVIEW REQUIRED AFTER FORM CHANGE':e.status} · scan {e.malware_status}{e.reviewed_by?` · reviewer ${e.reviewed_by}`:''}</Text>):<Text>No supporting evidence recorded.</Text>}
+ <Text style={styles.heading}>DoHS section decisions</Text>{snapshot.reviews.length?snapshot.reviews.map(r=><Text key={r.section} style={styles.issue}>{r.section}: {reviewCurrent(r,snapshot.version)?r.state:'REVIEW REQUIRED AFTER FORM CHANGE'} · {r.note}</Text>):<Text>No departmental decisions recorded.</Text>}
  <Text fixed style={styles.footer} render={({pageNumber,totalPages})=>`Vectra Assure by Vectra Solutions · Draft verification summary · Page ${pageNumber} of ${totalPages}`}/>
  </Page></Document>;
  return pdf(document).toBlob();
 }
 export async function draftPack(snapshot:ExportSnapshot,getFile:(id:string)=>Promise<ArrayBuffer>,recheck:()=>Promise<string>):Promise<Blob>{
  if(snapshot.preview)throw Error('Save and load a recorded case before generating an evidence pack.');
- const evidence=packEvidence(snapshot.evidence);if(evidence.length>20)throw Error('This draft pack exceeds the 20-document export limit.');
+ const evidence=packEvidence(snapshot.evidence,snapshot.version);if(evidence.length>20)throw Error('This draft pack exceeds the 20-document export limit.');
  const {PDFDocument,PDFName}=await import('pdf-lib');const result=await PDFDocument.create();
  result.setTitle(`DRAFT - ${snapshot.reference} - Vectra Assure`);result.setAuthor('Vectra Solutions');result.setSubject('Draft verification pack — not approved for submission');
  const summary=await PDFDocument.load(await (await summaryPdf(snapshot)).arrayBuffer());for(const page of await result.copyPages(summary,summary.getPageIndices()))result.addPage(page);
@@ -43,3 +44,4 @@ export async function draftPack(snapshot:ExportSnapshot,getFile:(id:string)=>Pro
  if(await recheck()!==snapshot.fingerprint)throw Error('The case or evidence register changed during export. Generate a fresh pack.');
  return new Blob([new Uint8Array(await result.save()).buffer],{type:'application/pdf'});
 }
+

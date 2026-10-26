@@ -35,8 +35,8 @@ test('react-pdf produces a readable draft summary without granting submission re
 });
 test('draft packs include only verified clean evidence, check hashes, and reject stale snapshots',async()=>{
  const donor=await PDFDocument.create();donor.addPage([595,842]);donor.addJavaScript('ignored','app.alert("test")');const bytes=new Uint8Array(await donor.save()).buffer;const sha256=await hash(bytes);
- const s=snapshot();const entry={id:'doc-1',kind:'APPLICANT_ID',filename:'synthetic.pdf',content_type:'application/pdf',sha256,status:'VERIFIED',malware_status:'CLEAN',reviewed_by:'synthetic-assessor',reviewed_at:'2026-10-14T08:00:00Z',document_date:null,document_subtype:'ID_COPY',certification_acknowledged:true,dependant_ordinal:null};
- s.evidence=[entry,{...entry,id:'unreviewed',status:'PENDING_REVIEW'},{...entry,id:'infected',malware_status:'INFECTED'}];const fetched:string[]=[];
+ const s=snapshot();const entry={id:'doc-1',kind:'APPLICANT_ID',filename:'synthetic.pdf',content_type:'application/pdf',sha256,status:'VERIFIED',malware_status:'CLEAN',reviewed_by:'synthetic-assessor',reviewed_at:'2026-10-14T08:00:00Z',reviewed_form_version:1,document_date:null,document_subtype:'ID_COPY',certification_acknowledged:true,dependant_ordinal:null};
+ s.evidence=[entry,{...entry,id:'unreviewed',status:'PENDING_REVIEW'},{...entry,id:'infected',malware_status:'INFECTED'},{...entry,id:'stale-review',reviewed_form_version:0},{...entry,id:'legacy-review',reviewed_form_version:null}];const fetched:string[]=[];
  const pack=await draftPack(s,async id=>{fetched.push(id);return bytes},async()=>s.fingerprint);const merged=await PDFDocument.load(await pack.arrayBuffer());
  const summary=await PDFDocument.load(await (await summaryPdf(s)).arrayBuffer());assert.equal(merged.getPageCount(),summary.getPageCount()+1);assert.deepEqual(fetched,['doc-1']);
  assert.equal(merged.catalog.has(PDFName.of('Names')),false);assert.match(merged.getTitle()??'',/^DRAFT/);
@@ -44,3 +44,4 @@ test('draft packs include only verified clean evidence, check hashes, and reject
  await assert.rejects(draftPack(s,async()=>new Uint8Array([1,2,3]).buffer,async()=>s.fingerprint),/evidence file changed/);
  await assert.rejects(draftPack({...s,preview:true},async()=>bytes,async()=>s.fingerprint),/recorded case/);
 });
+

@@ -33,7 +33,12 @@ export function threeMonthCutoff(today: string) {
 function matches(e: Evidence, kind: string) {
   return kind.startsWith('DEPENDANT_') ? e.kind === 'DEPENDANT_ID_OR_BIRTH_CERT' && e.dependant_ordinal === Number(kind.slice(-1)) : e.kind === kind;
 }
-function verified(e: Evidence, today: string): boolean {
+// An approval applies only to the saved form the reviewer actually checked.
+export function reviewCurrent(review: {reviewed_form_version: number | null}, formVersion: number | null): boolean {
+  return typeof formVersion === 'number' && Number.isInteger(formVersion) && formVersion >= 0 && review.reviewed_form_version === formVersion;
+}
+function verified(e: Evidence, today: string, formVersion: number | null): boolean {
+  if (!reviewCurrent(e, formVersion)) return false;
   if (e.status !== 'VERIFIED' || e.malware_status !== 'CLEAN' || !e.reviewed_by || !e.reviewed_at) return false;
   if (['APPLICANT_ID', 'SPOUSE_ID'].includes(e.kind) && !e.certification_acknowledged) return false;
   const dated = e.kind.includes('AFFIDAVIT') || e.kind === 'PROOF_OF_RESIDENCE' || e.document_subtype === 'BANK_STATEMENT';
@@ -46,7 +51,7 @@ function incomeMatches(e: Evidence, source: string) {
   if (source === 'EMPLOYED') return ['PAYSLIP', 'EMPLOYER_LETTER'].includes(e.document_subtype ?? '');
   return true; // Reviewer must verify the document against the declared source.
 }
-export function evaluate(form: CaseForm, evidence: Evidence[], reviews: DepartmentReview[], today: string): Readiness {
+export function evaluate(form: CaseForm, evidence: Evidence[], reviews: DepartmentReview[], today: string, formVersion: number | null = null): Readiness {
   const issues: Issue[] = [];
   const add = (code: string, message: string, severity: Issue['severity'] = 'BLOCKER', owner: Issue['owner'] = 'OUR_TEAM') => issues.push({ code, message, owner, severity });
   if (!form.applicant.firstNames || !form.applicant.surname || !form.applicant.idNumber) add('APPLICANT_DETAILS', 'Complete applicant identity details.');
@@ -59,21 +64,22 @@ export function evaluate(form: CaseForm, evidence: Evidence[], reviews: Departme
   if (form.site.latitude === null || form.site.longitude === null || !form.site.verificationDate || !form.site.photoParametersConfirmed) add('PHOTO_PARAMETERS', 'Confirm photograph GPS coordinates and capture date.');
   if (form.site.verificationDate > today) add('FUTURE_VISIT', 'Verification date cannot be in the future.');
   if (!form.site.recommendation) add('RECOMMENDATION', 'Record the field recommendation supported by the photograph.');
-  if(form.site.photoMetadataSource==='EXIF'&&!evidence.some(e=>e.id===form.site.photoEvidenceId&&e.kind==='SITE_PHOTO'&&e.sha256===form.site.photoMetadataSha256&&verified(e,today)))add('PHOTO_METADATA_BINDING','Link the same verified photograph used for metadata extraction.');
+  if(form.site.photoMetadataSource==='EXIF'&&!evidence.some(e=>e.id===form.site.photoEvidenceId&&e.kind==='SITE_PHOTO'&&e.sha256===form.site.photoMetadataSha256&&verified(e,today,formVersion)))add('PHOTO_METADATA_BINDING','Link the same verified photograph used for metadata extraction.');
   const requirements = requirementsFor(form);
   for (const requirement of requirements.filter(r => !r.kind.startsWith('DEPENDANT_'))) {
     const documents = evidence.filter(e => matches(e, requirement.kind));
-    const accepted = documents.some(e => verified(e, today) && (e.kind !== 'INCOME_PROOF' || incomeMatches(e, form.household.incomeSource)) && (e.kind !== 'SITE_PHOTO' || e.id === form.site.photoEvidenceId));
-    if (!accepted) add(`EVIDENCE_${requirement.kind}`, documents.length ? `${requirement.label}: review, scan, certification or validity checks remain outstanding.` : `Provide ${requirement.label.toLowerCase()}.`);
+    const accepted = documents.some(e => verified(e, today, formVersion) && (e.kind !== 'INCOME_PROOF' || incomeMatches(e, form.household.incomeSource)) && (e.kind !== 'SITE_PHOTO' || e.id === form.site.photoEvidenceId));
+    if (!accepted) add(`EVIDENCE_${requirement.kind}`, documents.length ? `${requirement.label}: review against the current saved form, scan, certification or validity checks remain outstanding.` : `Provide ${requirement.label.toLowerCase()}.`);
   }
   const dependantCount = form.household.dependants.length;
-  const acceptedDependants = new Set(evidence.filter(e => e.kind === 'DEPENDANT_ID_OR_BIRTH_CERT' && verified(e, today) && e.dependant_ordinal !== null && e.dependant_ordinal <= dependantCount).map(e => e.dependant_ordinal));
+  const acceptedDependants = new Set(evidence.filter(e => e.kind === 'DEPENDANT_ID_OR_BIRTH_CERT' && verified(e, today, formVersion) && e.dependant_ordinal !== null && e.dependant_ordinal <= dependantCount).map(e => e.dependant_ordinal));
   if (dependantCount === 2 && acceptedDependants.size === 1) add('DEPENDANT_POLICY_REVIEW', 'Two dependants with one verified document: obtain the second document or recorded DoHS policy confirmation.', 'REVIEW', 'DOHS');
   else if (acceptedDependants.size < dependantCount) add('DEPENDANT_EVIDENCE', 'Provide verified ID / birth evidence for each declared dependant.');
   if (form.applicant.propertyOwned || form.applicant.propertySold) add('PROPERTY_REVIEW', 'DoHS must review the declared property circumstances.', 'REVIEW', 'DOHS');
-  for (const section of dohsSections) if (!reviews.some(r => r.section === section && r.state === 'COMPLETE' && r.reviewed_by && r.reviewed_at)) add(`DOHS_${section}`, `${section.replaceAll('_', ' ')} awaits departmental completion.`, 'REVIEW', 'DOHS');
+  for (const section of dohsSections) if (!reviews.some(r => r.section === section && r.state === 'COMPLETE' && r.reviewed_by && r.reviewed_at && reviewCurrent(r, formVersion))) add(`DOHS_${section}`, `${section.replaceAll('_', ' ')} awaits departmental completion against the current saved form.`, 'REVIEW', 'DOHS');
   add('RULES_PENDING_APPROVAL', 'The recovered conditional rules are provisional; source-workbook reconciliation and approval remain outstanding.', 'REVIEW', 'DOHS');
   const ourTeamReady = !issues.some(i => i.owner === 'OUR_TEAM');
   const departmentalReady = !issues.some(i => i.owner === 'DOHS');
   return { ruleVersion: RULE_VERSION, provisional: true, readiness: issues.some(i => i.severity === 'BLOCKER') ? 'RED' : 'AMBER', ourTeamReady, departmentalReady, submissionReady: false, issues, requirements };
 }
+

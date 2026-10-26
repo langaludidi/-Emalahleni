@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, SignJWT, createLocalJWKSet, exportJWK } from 'jose';
 import { actorFrom } from '../src/auth';
-import { blankForm, formSchema, type Evidence } from '../src/contracts';
+import { blankForm, formSchema, dohsSections, type Evidence } from '../src/contracts';
 import { encryptForm, decryptForm } from '../src/crypto';
 import { Database } from '../src/database';
 import { evaluate, requirementsFor, threeMonthCutoff } from '../src/rules';
@@ -10,7 +10,7 @@ import { handle } from '../src/worker';
 
 const today='2026-10-10';
 function form() { const f=blankForm();f.applicant={...f.applicant,firstNames:'Synthetic',surname:'Example',idNumber:'0000000000000',maritalStatus:'SINGLE'};f.household.incomeSource='UNEMPLOYED';f.site={houseType:'Mud structure',houseTypeConfirmed:true,latitude:-31.7,longitude:27.3,verificationDate:today,photoParametersConfirmed:true,recommendation:'Synthetic observation',photoEvidenceId:'00000000-0000-4000-8000-000000000010',photoMetadataSha256:'',photoMetadataSource:''};return f; }
-function evidence(f= form()):Evidence[] {return requirementsFor(f).map((r,i)=>({id:r.kind==='SITE_PHOTO'?f.site.photoEvidenceId:`00000000-0000-4000-8000-${String(i+100).padStart(12,'0')}`,kind:r.kind,status:'VERIFIED',malware_status:'CLEAN',document_subtype:r.kind.includes('AFFIDAVIT')?'AFFIDAVIT':null,document_date:today,reviewed_by:'synthetic-assessor',reviewed_at:today,certification_acknowledged:true,dependant_ordinal:null}));}
+function evidence(f= form()):Evidence[] {return requirementsFor(f).map((r,i)=>({id:r.kind==='SITE_PHOTO'?f.site.photoEvidenceId:`00000000-0000-4000-8000-${String(i+100).padStart(12,'0')}`,kind:r.kind,status:'VERIFIED',malware_status:'CLEAN',document_subtype:r.kind.includes('AFFIDAVIT')?'AFFIDAVIT':null,document_date:today,reviewed_by:'synthetic-assessor',reviewed_at:today,reviewed_form_version:4,certification_acknowledged:true,dependant_ordinal:null}));}
 test('conditional declarations require evidence; client cannot set departmental or document approval',()=>{
  const f=form();f.applicant.disability=true;f.applicant.maritalStatus='MARRIED';f.applicant.disaster=true;
  const kinds=requirementsFor(f).map(r=>r.kind);
@@ -20,27 +20,36 @@ test('conditional declarations require evidence; client cannot set departmental 
  f.household.dependants=[{name:'a',relationship:'child'},{name:'b',relationship:'child'},{name:'c',relationship:'child'}];assert.equal(formSchema.safeParse(f).success,false);
 });
 test('pending scan, missing reviewer and unreviewed evidence cannot pass readiness',()=>{
- const f=form();const docs=evidence(f);assert.equal(evaluate(f,docs,[],today).ourTeamReady,true);
+ const f=form();const docs=evidence(f);assert.equal(evaluate(f,docs,[],today,4).ourTeamReady,true);
  for(const change of [{malware_status:'NOT_SCANNED'},{status:'PENDING_REVIEW'},{reviewed_by:null},{certification_acknowledged:false}]){
-  const changed=docs.map(d=>d.kind==='APPLICANT_ID'?{...d,...change}:d);assert.equal(evaluate(f,changed,[],today).ourTeamReady,false);
+  const changed=docs.map(d=>d.kind==='APPLICANT_ID'?{...d,...change}:d);assert.equal(evaluate(f,changed,[],today,4).ourTeamReady,false);
  }
- assert.equal(evaluate(f,docs,[],today).submissionReady,false);
+ assert.equal(evaluate(f,docs,[],today,4).submissionReady,false);
+});
+test('saved-case readiness requires reviews of the current form version',()=>{
+ const f=form(),docs=evidence(f).map(d=>({...d,reviewed_form_version:4}));
+ const reviews=dohsSections.map(section=>({section,state:'COMPLETE',reviewed_by:'synthetic-department',reviewed_at:today,reviewed_form_version:4}));
+ const check=evaluate;
+ assert.equal(check(f,docs,reviews,today,4).ourTeamReady,true);
+ assert.equal(check(f,docs,reviews,today,5).ourTeamReady,false,'A saved edit must invalidate earlier evidence approval');
+ assert.ok(check(f,docs,reviews,today,5).issues.some(i=>i.code==='DOHS_PAGE_2'));
+ assert.equal(check(f,evidence(f).map(d=>({...d,reviewed_form_version:null})),reviews,today,4).ourTeamReady,false,'Legacy approvals with no version cannot imply current review');
 });
 test('calendar month boundaries and SASSA-specific validity',()=>{
  assert.equal(threeMonthCutoff('2026-05-31'),'2026-02-28');assert.equal(threeMonthCutoff('2024-05-31'),'2024-02-29');
  const f=form();f.household.incomeSource='SOCIAL_GRANT';let docs=evidence(f);
  docs=docs.map(d=>d.kind==='INCOME_PROOF'?{...d,document_subtype:'SASSA_LETTER',document_date:'2020-01-01'}:d);
- assert.equal(evaluate(f,docs,[],today).ourTeamReady,true);
+ assert.equal(evaluate(f,docs,[],today,4).ourTeamReady,true);
  const bank=docs.map(d=>d.kind==='INCOME_PROOF'?{...d,document_subtype:'BANK_STATEMENT'}:d);
- assert.equal(evaluate(f,bank,[],today).ourTeamReady,false);
+ assert.equal(evaluate(f,bank,[],today,4).ourTeamReady,false);
  const boundary=bank.map(d=>d.kind==='INCOME_PROOF'?{...d,document_date:'2026-07-10'}:d);
- assert.equal(evaluate(f,boundary,[],today).ourTeamReady,true);
+ assert.equal(evaluate(f,boundary,[],today,4).ourTeamReady,true);
 });
 test('two dependants with one document receive policy review; one ordinal cannot count twice',()=>{
  const f=form();f.household.dependants=[{name:'a',relationship:'child'},{name:'b',relationship:'child'}];
  const docs=evidence(f).filter(d=>!d.kind.startsWith('DEPENDANT_'));
  const d={...evidence()[0],kind:'DEPENDANT_ID_OR_BIRTH_CERT',dependant_ordinal:1};
- const r=evaluate(f,[...docs,d,{...d,id:'duplicate'}],[],today);
+ const r=evaluate(f,[...docs,d,{...d,id:'duplicate'}],[],today,4);
  assert.equal(r.readiness,'AMBER');assert.ok(r.issues.some(i=>i.code==='DEPENDANT_POLICY_REVIEW'&&i.owner==='DOHS'));
 });
 test('encrypted draft cannot be moved to another case or altered',async()=>{
@@ -79,3 +88,4 @@ test('R2 probe uses only its fixed synthetic key and redacts backend failures',a
  const failed=await handle(new Request('https://app.example/storage-probe'),{EVIDENCE_BUCKET:{head:async()=>{throw new Error('PRIVATE')}} as any});
  assert.equal(failed.status,503);assert.equal((await failed.text()).includes('PRIVATE'),false);
 });
+

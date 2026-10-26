@@ -33,13 +33,14 @@ export const dohsSections = ['PAGE_2', 'PAGE_3', 'SECTION_C', 'SECTION_E', 'SECT
 export interface Evidence {
   id: string; kind: string; status: string; malware_status: string;
   document_subtype: string | null; document_date: string | null;
-  reviewed_by: string | null; reviewed_at: string | null;
+  reviewed_by: string | null; reviewed_at: string | null; reviewed_form_version: number | null;
   certification_acknowledged: boolean; dependant_ordinal: number | null; sha256?:string|null;
 }
-export interface DepartmentReview { section: string; state: string; reviewed_by: string; reviewed_at: string; }
+export interface DepartmentReview { section: string; state: string; reviewed_by: string; reviewed_at: string; reviewed_form_version: number | null; }
 export interface Issue { code: string; message: string; owner: 'OUR_TEAM' | 'DOHS'; severity: 'BLOCKER' | 'REVIEW'; }
 export interface Readiness {
   ruleVersion: string; provisional: true; readiness: 'RED' | 'AMBER' | 'GREEN';
   ourTeamReady: boolean; departmentalReady: boolean; submissionReady: false;
   issues: Issue[]; requirements: { kind: string; label: string }[];
 }
+

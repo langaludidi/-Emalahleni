@@ -60,7 +60,7 @@ The API permits PDF, JPEG and PNG files up to 5 MB. An authenticated upload inte
 
 ## Review ownership
 
-The DoHS workspace covers Pages 2 and 3 and Sections C, E, F and H. Only a project-assigned DoHS reviewer may write these reviews. Updates carry the last review timestamp to reject stale decisions. Applicant-form saves cannot modify departmental fields.
+The DoHS workspace covers Pages 2 and 3 and Sections C, E, F and H. Only a project-assigned DoHS reviewer may write these reviews. Updates carry the last review timestamp and checked form version to reject stale decisions. Applicant-form saves cannot modify departmental fields.
 
 ## ID reading and private service deployment
 
@@ -106,7 +106,7 @@ Printed image-overlay OCR, offline capture and notifications are unimplemented c
 
 The site step can read embedded JPEG/PNG GPS and camera dates with exifr. Extraction happens in the browser and proposes values without uploading the file. Applying a proposal resets confirmation; a field officer must check the source image. EXIF-based values carry a file hash, and readiness requires the linked verified photograph to match it. Editing proposed GPS/date values switches to manual entry. A date printed onto an image requires manual entry or a future OCR integration. Camera dates preserve the recorded calendar date; unknown timezones are shown explicitly.
 
-Verification summaries use react-pdf. Preview summaries are marked unsaved; recorded-case summaries and evidence packs are marked draft and never imply submission approval. Export snapshots are read consistently from the database and use the current backend rules. pdf-lib combines only verified, clean evidence, checks downloaded hashes, and rechecks the case fingerprint before completing the pack. Packs are limited to 20 evidence documents, 25 MB and 200 pages. PDF form values are flattened and interactive annotations omitted from copies; original stored evidence is unchanged.
+Verification summaries use react-pdf. Preview summaries are marked unsaved; recorded-case summaries and evidence packs are marked draft and never imply submission approval. Export snapshots are read consistently from the database and use the current backend rules. pdf-lib combines only clean evidence verified against the current saved form, checks downloaded hashes, and rechecks the case fingerprint before completing the pack. Packs are limited to 20 evidence documents, 25 MB and 200 pages. PDF form values are flattened and interactive annotations omitted from copies; original stored evidence is unchanged.
 
 See THIRD_PARTY_LICENSES.md for MIT notices. GitHub's `Emalahleni build and browser checks` workflow runs type checks, tests, a dry-run build and desktop/mobile Chromium journeys, including a generated verification-summary download. Release evidence and its limits are described above.
 

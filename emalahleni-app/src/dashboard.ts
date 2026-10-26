@@ -25,10 +25,10 @@ export async function projectDashboard(db:Database,actor:string,project:string):
       count(*) FILTER (WHERE uploaded_at IS NOT NULL AND malware_status='NOT_SCANNED')::int AS "pendingScan",
       count(*) FILTER (WHERE malware_status='SCAN_FAILED')::int AS "scanFailed",
       count(*) FILTER (WHERE malware_status='INFECTED')::int AS infected,
-      count(*) FILTER (WHERE status='PENDING_REVIEW' AND malware_status='CLEAN')::int AS "awaitingReview",
-      count(*) FILTER (WHERE status='VERIFIED' AND malware_status='CLEAN')::int AS verified,
+      count(*) FILTER (WHERE (e.status='PENDING_REVIEW' OR (e.status='VERIFIED' AND e.reviewed_form_version IS DISTINCT FROM a.version)) AND e.malware_status='CLEAN')::int AS "awaitingReview",
+      count(*) FILTER (WHERE e.status='VERIFIED' AND e.malware_status='CLEAN' AND e.reviewed_form_version=a.version)::int AS verified,
       count(*) FILTER (WHERE status='REJECTED' AND malware_status='CLEAN')::int AS rejected
-      FROM public.evidence WHERE project_id=$1`,params:[project]},
+      FROM public.evidence e JOIN public.applications a ON a.id=e.application_id AND a.project_id=e.project_id WHERE e.project_id=$1`,params:[project]},
     {query:'SELECT id,reference,version,workflow_status,updated_at FROM public.applications WHERE project_id=$1 ORDER BY updated_at DESC,id DESC LIMIT 10',params:[project]}
   ],true);
   if(!memberships.length)throw new HttpError(404,'NOT_FOUND');

@@ -2,10 +2,11 @@ import { z, ZodError } from 'zod';
 import { actorFrom } from './auth';
 import { Database, writeScope } from './database';
 import { encryptForm, decryptForm } from './crypto';
-import { formSchema, blankForm, dohsSections, type Evidence, type DepartmentReview } from './contracts';
+import { formSchema, blankForm, type Evidence, type DepartmentReview } from './contracts';
 import { evaluate } from './rules';
 import { HttpError } from './http';
 import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured, type EvidenceEnv } from './evidence';
+import {reviewDepartment} from './department-review';
 import {exportSnapshot} from './export-snapshot';
 import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-document';
 import {probeDocumentService,DocumentServiceCheckError} from './document-service-probe';
@@ -127,24 +128,18 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if (action === 'readiness' && request.method === 'GET') {
       const [cases, evidence, reviews] = await db.forActor(actor, [
         { query: 'SELECT fields_ciphertext,version FROM public.applications WHERE project_id=$1 AND id=$2', params: [project, id] },
-        { query: 'SELECT id,kind,status,malware_status,document_subtype,document_date,reviewed_by,reviewed_at,certification_acknowledged,dependant_ordinal,sha256 FROM public.evidence WHERE project_id=$1 AND application_id=$2', params: [project, id] },
-        { query: 'SELECT section,state,reviewed_by,reviewed_at FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2', params: [project, id] }
-      ]);
+        { query: 'SELECT id,kind,status,malware_status,document_subtype,document_date,reviewed_by,reviewed_at,reviewed_form_version,certification_acknowledged,dependant_ordinal,sha256 FROM public.evidence WHERE project_id=$1 AND application_id=$2', params: [project, id] },
+        { query: 'SELECT section,state,reviewed_by,reviewed_at,reviewed_form_version FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2', params: [project, id] }
+      ],true);
       if (!cases.length) throw new HttpError(404, 'NOT_FOUND');
       const form = formSchema.parse(await decryptForm(cases[0].fields_ciphertext, env.FORM_ENCRYPTION_KEY, project, id));
-      return json({ formVersion: cases[0].version, ...evaluate(form, evidence as Evidence[], reviews as DepartmentReview[], new Date().toISOString().slice(0, 10)) });
+      return json({ formVersion: cases[0].version, ...evaluate(form, evidence as Evidence[], reviews as DepartmentReview[], new Date().toISOString().slice(0, 10),cases[0].version) });
     }
     if (action === 'dohs' && request.method === 'PUT' && route[4]) {
-      const section = z.enum(dohsSections).parse(route[4]);
-      const input = z.object({ state: z.enum(['PENDING', 'COMPLETE', 'RETURNED']), note: z.string().trim().min(10).max(500), expectedReviewedAt:z.iso.datetime({offset:true}).nullable().default(null) }).strict().parse(await body(request));
-      const [membership]=await db.forActor(actor,[{query:"SELECT 1 FROM public.project_memberships WHERE project_id=$1 AND user_id=$2 AND active AND role='DOHS_REVIEWER'",params:[project,actor]}]);
-      if(!membership.length)throw new HttpError(403,'DEPARTMENT_REVIEW_DENIED');
-      const [rows] = await db.forActor(actor, [{ query: `WITH reviewed AS (INSERT INTO public.dohs_section_reviews (project_id,application_id,section,state,note,reviewed_by,reviewed_at) SELECT $1,$2,$3,$4,$5,$6,now() FROM public.applications a WHERE a.id=$2 AND a.project_id=$1 AND EXISTS (SELECT 1 FROM public.project_memberships m WHERE m.project_id=$1 AND m.user_id=$6 AND m.active AND m.role='DOHS_REVIEWER') ON CONFLICT (application_id,section) DO UPDATE SET state=EXCLUDED.state,note=EXCLUDED.note,reviewed_by=EXCLUDED.reviewed_by,reviewed_at=now() WHERE dohs_section_reviews.reviewed_at=$7::timestamptz RETURNING section,state,to_char(reviewed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS reviewed_at), audited AS (INSERT INTO public.audit_events (project_id,actor_id,action,metadata) SELECT $1,$6,'DOHS_SECTION_REVIEWED',jsonb_build_object('applicationId',$2::text,'section',section,'state',state) FROM reviewed) SELECT * FROM reviewed`, params: [project, id, section, input.state, input.note, actor,input.expectedReviewedAt] }]);
-      if (!rows.length) throw new HttpError(409, 'DEPARTMENT_REVIEW_CHANGED_OR_UNAVAILABLE');
-      return json(rows[0]);
+      return json(await reviewDepartment(db,actor,project,id,route[4],await body(request)));
     }
     if(action==='dohs'&&request.method==='GET'&&!route[4]){
-      const [rows]=await db.forActor(actor,[{query:`SELECT section,state,note,reviewed_by,to_char(reviewed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS reviewed_at FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2 ORDER BY section`,params:[project,id]}]);
+      const [rows]=await db.forActor(actor,[{query:`SELECT section,state,note,reviewed_by,reviewed_form_version,to_char(reviewed_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS reviewed_at FROM public.dohs_section_reviews WHERE project_id=$1 AND application_id=$2 ORDER BY section`,params:[project,id]}]);
       return json({reviews:rows});
     }
     if(action==='export'&&request.method==='GET'&&!route[4])return json(await exportSnapshot(db,actor,project,id,env.FORM_ENCRYPTION_KEY));
