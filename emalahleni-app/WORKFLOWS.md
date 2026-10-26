@@ -45,4 +45,36 @@ Scanner failures, unknown availability and failed register requests never count 
 
 Before a controlled test session, confirm project membership, save/reopen a synthetic draft and check document service availability if an upload is unavailable. Review scan retries and returned items on the dashboard. Keep department decisions with their assigned reviewers. Resolve provisional rule ownership and operational support before authorising production use.
 
+## Operational checks and recovery
+
+The public address is https://app.vectrasa.co.za. From the app directory, run `node scripts/check-domain.mjs` to check DNS, HTTPS/application health and the accepted Auth origin. Exit 0 means those public checks passed; exit 2 means at least one remains pending. The probe does not sign in, inspect an applicant case or test mail delivery. The workers.dev address remains a fallback.
+
+For a controlled session, sign in, reopen a saved synthetic case and use **Check document service**. That separate authenticated probe tests the private scanner and ID reader using fixed synthetic bytes. It does not upload a case document or approve evidence. A release acceptance run must separately upload a synthetic document, record its clean scan, read/confirm ID suggestions, save and reopen the case.
+
+| Symptom | Operator response |
+| --- | --- |
+| No projects or access denied | Ask the project administrator to check the intended identity's active membership and role. Sign-in alone does not grant project access. |
+| Save conflict or an uncertain write response | Keep local input. Check/reopen the recorded case and reconcile its version before another write. Saves and reviews are not automatically replayed after an uncertain commit. |
+| Evidence/review register unavailable | Refresh the register. Pending input is retained and review writes are held until the relevant register loads. An error does not mean the case has no documents. |
+| Stored document reports scan failed | Use Retry scan on that recorded document. Preserve its fixed failure code if it fails again. The file stays quarantined; selecting/uploading another copy is not the recovery step. |
+| Scanner starts slowly or reports unavailable | Use the authenticated service check and review the current private-container health/signature state in Cloudflare. A completed build is not proof that the running image is healthy. |
+| New domain fails while workers.dev works | Run the public domain check and inspect Cloudflare's zone/custom-domain status. Preserve the existing root/mail records described in DOMAIN_SETUP.md. |
+
+For an incident, record the UTC time, deployed Worker version, project/case/evidence references, action and fixed error code in the approved support channel. Keep beneficiary document content, passwords, reset codes, bearer tokens and encryption keys out of diagnostic reports. Record whether the last write was confirmed before attempting recovery.
+
+### Release rollback
+
+1. Identify the last verified compatible app version in Cloudflare **Workers & Pages → emalahleni-api-staging → Deployments**. The 26 October domain release used version `ee24bb41-41e6-4eee-94bf-a5be9b74b02e`; check that version is still an appropriate recovery target for the current incident.
+2. Check schema, binding and Durable Object lifecycle compatibility before selecting an older version. Cloudflare can block rollback after incompatible resource/lifecycle changes. A Worker rollback leaves connected data resources unchanged; it does not restore Neon or R2 data. It also does not establish that the intended scanner image is serving requests—follow the private scanner deployment guide for scanner-image incidents.
+3. Use the target version's **three-dot menu → Rollback**. Keep the existing Worker, bucket and scanner namespace and retain the existing encryption key. Do not recreate resources to perform a code rollback.
+4. Verify the active version, public domain check, synthetic sign-in/save/reopen and private service check. Record the outcome before reopening affected workflows.
+
+See [Cloudflare's rollback procedure and limits](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/) and [private scanner deployment](scanner/DEPLOYMENT.md). Recovery of application data is a separate operation from code rollback.
+
+### Backup and restore acceptance
+
+Backup coverage and a successful restore are still operational acceptance items, not established by the current deployment checks. The service owner must identify the approved database recovery point, R2/evidence copy, encryption-key custody, access owner and retention policy. Record identifiers and access procedures without copying secret values into source or chat. Preserve `FORM_ENCRYPTION_KEY`; regenerating it does not recover existing encrypted forms.
+
+Demonstrate recovery into an isolated, approved test target before relying on the process. Use synthetic fixtures to verify decryption with the original project/case binding, matching evidence hashes, saved versions, audit records and project-role isolation. Confirm the restored database, R2 objects and key correspond to the same recoverable state. Record the recovery point, elapsed recovery time, observed data loss and pass/fail evidence. Do not overwrite the active database or bucket as a restore rehearsal, or reactivate the retired diagnostic account to run it.
+
 Domain onboarding and cutover checks are in [DOMAIN_SETUP.md](DOMAIN_SETUP.md).
