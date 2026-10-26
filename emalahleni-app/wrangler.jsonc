@@ -4,6 +4,7 @@
   "main": "src/entrypoint.ts",
   "compatibility_date": "2026-10-10",
   "workers_dev": true,
+  "routes": [{ "pattern": "app.vectrasa.co.za", "custom_domain": true }],
   "preview_urls": false,
   "observability": { "enabled": true, "redact_query_string": true, "logs": { "enabled": true, "invocation_logs": false }, "traces": { "enabled": false } },
   "assets": { "directory": "./web/out", "binding": "ASSETS", "run_worker_first": ["/api/*", "/healthz", "/storage-healthz", "/storage-probe"] },
@@ -25,3 +26,4 @@
     "NEON_AUTH_JWKS_URL": "https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
   }
 }
+
