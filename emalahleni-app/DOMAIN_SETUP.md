@@ -2,9 +2,11 @@
 
 The selected platform address is **https://app.vectrasa.co.za**. Keep registration at Domains.co.za and keep the main domain available for Vectra Solutions. The existing app, Worker, bucket and GitHub names stay unchanged.
 
-## Current, verified position
+## DNS and mail records to preserve
 
-Public DNS checked on 24 October 2026 is hosted on `ns1.mysecurecloudhost.com`, `ns2.mysecurecloudhost.com`, `ns3.mysecurecloudhost.com` and `ns4.mysecurecloudhost.com`. The app hostname is not published yet. The main website returns a 404 page; this does not establish whether email is working.
+Before the nameserver change, public DNS was hosted on `ns1.mysecurecloudhost.com`, `ns2.mysecurecloudhost.com`, `ns3.mysecurecloudhost.com` and `ns4.mysecurecloudhost.com`. Cloudflare assigned **`laylah.ns.cloudflare.com`** and **`nolan.ns.cloudflare.com`**. The registrar confirmed that pair was saved on 26 October 2026. Cloudflare's public resolver now returns the pair and the preserved website and mail DNS; other resolvers can retain older answers during propagation. This does not establish email send/receive or an authenticated app journey.
+
+DNS records are managed in Cloudflare. The registrar's empty optional Premium DNS page is a separate service; it does not need to be enabled or populated for this setup.
 
 The main address is also the mail server's MX target. Preserve these current records during onboarding:
 
@@ -23,7 +25,7 @@ The current workspace has no Cloudflare or Domains.co.za DNS connection. The app
 
 1. In the existing Cloudflare account `f887a522ca852a80491c2485853d4363`, open `vectrasa.co.za` if it is already listed. Otherwise add/onboard that domain using the Free DNS plan. The existing Workers subscription remains separate.
 2. Import the full existing DNS zone and review it against the current provider's export. Check the records above, especially the DNS-only apex used by email. Keep the existing MX/TXT records and all additional mail records.
-3. Copy the **two nameservers assigned by Cloudflare to this zone**. They are unique to the account/zone; do not use example nameservers.
+3. Copy the **two nameservers assigned by Cloudflare to this zone**. This zone's assigned pair is `laylah.ns.cloudflare.com` and `nolan.ns.cloudflare.com`; use the current Overview values if Cloudflare changes them during a future onboarding.
 4. In Domains.co.za, open this domain's nameserver settings and replace the current four nameservers with Cloudflare's assigned pair. Registration stays at Domains.co.za. If the interface labels differ, stop at the domain settings and report the visible options.
 5. Wait for Cloudflare to show the zone as **Active**. Check that the existing website and mail DNS still resolve to their preserved values.
 
@@ -31,13 +33,13 @@ Once the zone is active, the platform domain can be attached to the existing Wor
 
 ## App-side activation after the zone is Active
 
-The following route belongs in the **existing** `wrangler.jsonc`, alongside its current configuration:
+The **existing** `wrangler.jsonc` declares this custom-domain route:
 
 ```json
 "routes": [{ "pattern": "app.vectrasa.co.za", "custom_domain": true }]
 ```
 
-This entry is deliberately not active in the current deployment configuration: Cloudflare requires an active owned zone, and enabling it earlier would block working app deployments. Once DNS is ready, add it to the canonical config and deploy the existing `emalahleni-api-staging` Worker through the normal verified release path. Keep `workers_dev: true` as the fallback address. Cloudflare creates the custom hostname's DNS record and certificate.
+Deploy this configuration only after Cloudflare confirms the owned zone is **Active**, using the existing `emalahleni-api-staging` Worker's normal verified release path. Keep `workers_dev: true` as the fallback address. Cloudflare creates the custom hostname's DNS record and certificate; activation is complete only after the public checks below succeed. The root domain, mail DNS, Worker, scanner and storage names remain unchanged.
 
 The equivalent dashboard operation is **Workers & Pages → emalahleni-api-staging → Settings → Domains & Routes → Add → Custom Domain → app.vectrasa.co.za**. Record this route in the source config too so the source continues to describe the deployment.
 
