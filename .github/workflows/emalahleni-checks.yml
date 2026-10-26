@@ -5,8 +5,32 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  WRANGLER_SEND_METRICS: 'false'
 jobs:
-  verify:
+  checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [typecheck, test]
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run ${{ matrix.check }}
+  database:
+    name: PostgreSQL concurrency
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -23,8 +47,12 @@ jobs:
       run:
         working-directory: emalahleni-app
     env:
-      NEXT_TELEMETRY_DISABLED: '1'
-      WRANGLER_SEND_METRICS: 'false'
+      CI: 'true'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: vectra_ci
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-postgres-password
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,15 +61,24 @@ jobs:
           cache: npm
           cache-dependency-path: emalahleni-app/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm test
+      # These share a disposable fixture schema, so their setup remains ordered.
       - run: node --import tsx tests/upload-concurrency.ts
-        env:
-          PGHOST: 127.0.0.1
-          PGPORT: '5432'
-          PGDATABASE: vectra_ci
-          PGUSER: postgres
-          PGPASSWORD: synthetic-ci-postgres-password
+      - run: node --import tsx tests/review-concurrency.ts
+  browser:
+    name: Build and browser
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
       - run: npm run build
       - uses: actions/setup-python@v5
         with:
@@ -56,3 +93,15 @@ jobs:
           path: emalahleni-app/review/
           if-no-files-found: ignore
           retention-days: 7
+  verify:
+    # Preserve the existing aggregate check name while the work runs in parallel.
+    if: always()
+    needs: [checks, database, browser]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every check to pass
+        env:
+          CHECKS_RESULT: ${{ needs.checks.result }}
+          DATABASE_RESULT: ${{ needs.database.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: test "$CHECKS_RESULT" = success && test "$DATABASE_RESULT" = success && test "$BROWSER_RESULT" = success

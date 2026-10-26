@@ -16,7 +16,7 @@ test('dashboard uses a single read-only actor snapshot and only returns project 
     assert.ok(statements.every(item=>!item.query.includes('fields_ciphertext')));
     assert.match(statements[0].query,/user_id=\$2 AND active/);
     assert.match(statements[1].query,/FROM public.applications WHERE project_id=\$1/);
-    assert.match(statements[2].query,/FROM public.evidence WHERE project_id=\$1/);
+    assert.match(statements[2].query,/FROM public.evidence e JOIN public.applications/);
     return [[{allowed:1}],[applications],[evidence],recent];
   }} as unknown as Database;
   const result=await projectDashboard(db,'synthetic-actor',project);

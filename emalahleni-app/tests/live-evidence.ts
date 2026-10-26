@@ -16,7 +16,7 @@ const clean=await intent();assert.equal((await call('synthetic-officer-b',clean.
 assert.equal((await call('synthetic-officer-a',clean.uploadPath,'PUT',new TextEncoder().encode('wrong'),true)).status,400);
 const uploaded=await call('synthetic-officer-a',clean.uploadPath,'PUT',bytes,true);assert.equal(uploaded.status,200,JSON.stringify(uploaded));assert.equal(uploaded.result.status,'PENDING_REVIEW');
 assert.equal((await call('synthetic-officer-a',clean.uploadPath,'PUT',bytes,true)).status,409);
-const review={decision:'VERIFIED',note:'Synthetic identity review',documentSubtype:'ID_COPY',documentDate:null,certificationConfirmed:true,contentConfirmed:true};
+const review={formVersion:0,decision:'VERIFIED',note:'Synthetic identity review',documentSubtype:'ID_COPY',documentDate:null,certificationConfirmed:true,contentConfirmed:true};
 assert.equal((await call('synthetic-officer-a',root+`/evidence/${clean.id}/review`,'PUT',review)).status,403);
 assert.equal((await call('synthetic-assessor-a',root+`/evidence/${clean.id}/review`,'PUT',{...review,certificationConfirmed:false})).status,409);
 assert.equal((await call('synthetic-assessor-a',root+`/evidence/${clean.id}/review`,'PUT',review)).status,200);
@@ -27,11 +27,12 @@ assert.equal((await call('synthetic-officer-a',root+`/evidence/${failed.id}/down
 assert.equal((await call('synthetic-assessor-a',root+`/evidence/${failed.id}/review`,'PUT',review)).status,409);
 offline=false;assert.equal((await call('synthetic-officer-a',root+`/evidence/${failed.id}/scan`,'POST')).result.status,'PENDING_REVIEW');
 verdict='INFECTED';const infected=await intent();const rejected=await call('synthetic-officer-a',infected.uploadPath,'PUT',bytes,true);assert.equal(rejected.result.status,'REJECTED');assert.equal((await call('synthetic-officer-a',root+`/evidence/${infected.id}/download`)).status,404);
-const dept=root+'/dohs/SECTION_E';const first=await call('synthetic-reviewer-a',dept,'PUT',{state:'PENDING',note:'Synthetic initial departmental note',expectedReviewedAt:null});assert.equal(first.status,200,JSON.stringify(first));
-assert.equal((await call('synthetic-reviewer-a',dept,'PUT',{state:'COMPLETE',note:'Synthetic stale departmental note',expectedReviewedAt:null})).status,409);
-assert.equal((await call('synthetic-reviewer-a',dept,'PUT',{state:'COMPLETE',note:'Synthetic approved departmental note',expectedReviewedAt:first.result.reviewed_at})).status,200);
+const dept=root+'/dohs/SECTION_E';const first=await call('synthetic-reviewer-a',dept,'PUT',{formVersion:0,state:'PENDING',note:'Synthetic initial departmental note',expectedReviewedAt:null});assert.equal(first.status,200,JSON.stringify(first));
+assert.equal((await call('synthetic-reviewer-a',dept,'PUT',{formVersion:0,state:'COMPLETE',note:'Synthetic stale departmental note',expectedReviewedAt:null})).status,409);
+assert.equal((await call('synthetic-reviewer-a',dept,'PUT',{formVersion:0,state:'COMPLETE',note:'Synthetic approved departmental note',expectedReviewedAt:first.result.reviewed_at})).status,200);
 const exported=await call('synthetic-officer-a',root+'/export');assert.equal(exported.status,200,JSON.stringify(exported));assert.equal(exported.result.preview,false);assert.equal(exported.result.readiness.submissionReady,false);assert.match(exported.result.fingerprint,/^[a-f0-9]{64}$/);
 assert.equal((await call('synthetic-officer-b',root+'/export')).status,404);
 const changedForm=blankForm();changedForm.applicant.firstNames='Updated synthetic';assert.equal((await call('synthetic-officer-a',root,'PUT',{version:0,form:changedForm})).status,200);
 const refreshed=await call('synthetic-officer-a',root+'/export');assert.equal(refreshed.status,200);assert.notEqual(refreshed.result.fingerprint,exported.result.fingerprint);
 console.log('PASS: upload integrity and replay controls, cross-project denial, clean scan plus authorised review, certification gate, scanner outage quarantine/retry, infected download denial, DoHS optimistic concurrency, export access isolation, and snapshot changes after edits.');
+

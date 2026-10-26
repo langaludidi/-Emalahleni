@@ -28,10 +28,12 @@ Home keeps capture and in-progress document input in the current tab. Moving out
 - Failed scan: the document stays quarantined. Use Retry scan on that document; do not repeatedly upload duplicates. Keep the fixed failure code if escalation is needed.
 - Infected file: it stays blocked. A clean scan cannot be assumed from a completed request.
 - Clean applicant ID: read suggestions, compare with the original and explicitly confirm selected replacements. Save the form afterward. Reading is not identity authentication or assessor verification.
-- Assessor: choose a clean pending document, or use its Review document action. Verify the original, content and required certification before recording a decision. Rejections require a review note too.
+- Assessor: choose a clean pending document or an earlier approval marked for review after a form change, or use its Review document action. Verify the original, content and required certification before recording a decision. Rejections require a review note too.
 - DoHS reviewer: record section decisions separately; capture and assessor roles do not inherit departmental authority.
 
 Refreshing the register retains edited ID suggestions and unrecorded review input. ID suggestions cannot be applied while the evidence register is unavailable; if the source ID is no longer clean and available, its suggestions are removed without changing the form. Switching review documents or reading another ID asks before discarding pending input. Reopening the same assessor document keeps the current note. Use **Clear evidence review** to deliberately discard an unrecorded decision. Review writes are held until the corresponding register has loaded successfully.
+
+Document and departmental approvals are bound to the saved form version checked. Save capture changes before recording a review. Any later form save requires fresh reviews; files and scan verdicts stay intact. Legacy decisions without a recorded form version also require fresh review. Outdated approvals are shown in the register, counted as awaiting assessment on the dashboard and excluded from draft evidence packs. If a form changes while an assessor draft is open, check it again and use **Restart review against saved form**; the note stays, but content/certification confirmations must be checked again.
 
 Review notes and departmental decisions are saved with their own explicit Record actions; Save draft saves capture fields. Use Refresh evidence and reviews after an uncertain response before repeating a mutation.
 
@@ -78,3 +80,11 @@ Backup coverage and a successful restore are still operational acceptance items,
 Demonstrate recovery into an isolated, approved test target before relying on the process. Use synthetic fixtures to verify decryption with the original project/case binding, matching evidence hashes, saved versions, audit records and project-role isolation. Confirm the restored database, R2 objects and key correspond to the same recoverable state. Record the recovery point, elapsed recovery time, observed data loss and pass/fail evidence. Do not overwrite the active database or bucket as a restore rehearsal, or reactivate the retired diagnostic account to run it.
 
 Domain onboarding and cutover checks are in [DOMAIN_SETUP.md](DOMAIN_SETUP.md).
+
+## Review-version schema release
+
+Apply `migrations/20261026_review_form_version.sql` to the existing staging database before deploying the matching Worker. It adds two nullable version columns and preserves existing reviews, audit history, stored files and scan results. Do not backfill legacy decisions as current: their original checked version is unknown. The previous Worker ignores these additive columns, so code rollback does not require a schema rollback. A later roll-forward again requires fresh review for decisions written by older code.
+
+The CI PostgreSQL service executes production review SQL to check both orderings of simultaneous draft saves and reviews, competing assessor writes, departmental timestamp conflicts, legacy re-review and infected-file denial. The service database is disposable and guarded by environment assertions.
+
+CI runs type checking, unit tests, PostgreSQL concurrency tests and the build/browser job in parallel. Browser journeys run after their build; the two SQL fixture scripts stay ordered in one disposable database job. The final `verify` check succeeds only when every job passes.

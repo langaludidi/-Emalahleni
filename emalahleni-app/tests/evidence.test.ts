@@ -33,8 +33,10 @@ test('scanner results fail closed for unavailable, malformed, wrong-hash and fai
  assert.equal(await scanVerdict(bytes,hash,{SCANNER_TOKEN:'secret',SCANNER:{fetch:async()=>Response.json({sha256:hash,verdict:'CLEAN'})} as any}),'CLEAN');
 });
 test('review clients cannot set scanner status or impersonate the reviewer',()=>{
- const input={decision:'VERIFIED',note:'Synthetic review',documentSubtype:'ID_COPY',documentDate:null,certificationConfirmed:true,contentConfirmed:true};
+ const input={formVersion:0,decision:'VERIFIED',note:'Synthetic review',documentSubtype:'ID_COPY',documentDate:null,certificationConfirmed:true,contentConfirmed:true};
  assert.equal(reviewSchema.safeParse(input).success,true);
+ const {formVersion,...missingVersion}=input;assert.equal(reviewSchema.safeParse(missingVersion).success,false);
+ assert.equal(reviewSchema.safeParse({...input,formVersion:-1}).success,false);
  assert.equal(reviewSchema.safeParse({...input,malware_status:'CLEAN'}).success,false);
  assert.equal(reviewSchema.safeParse({...input,reviewed_by:'another-person'}).success,false);
 });
@@ -58,3 +60,4 @@ test('failed scans expose fixed useful reasons without returning provider text o
  assert.deepEqual(await scanResult(bytes,hash,env(async()=>Response.json({sha256:hash,verdict:'CLEAN'}))),{verdict:'CLEAN'});
  assert.deepEqual(await scanResult(bytes,hash,env(async()=>Response.json({sha256:hash,verdict:'INFECTED'}))),{verdict:'INFECTED'});
 });
+

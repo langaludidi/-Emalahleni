@@ -309,8 +309,12 @@ try:
                 elif suffix.endswith('/evidence/synthetic-document/review') and method == 'PUT':
                     body = route.request.post_data_json
                     assert body['decision']=='VERIFIED' and body['contentConfirmed'] and body['certificationConfirmed']
-                    evidence_documents[0].update(status='VERIFIED',reviewed_by='synthetic-assessor')
-                    result = evidence_documents[0]
+                    current = stored_cases[suffix.split('/')[0]]
+                    if body['formVersion'] != current['version']:
+                        status, result = 409, {'error':'REVIEW_STATE_OR_CERTIFICATION_INVALID'}
+                    else:
+                        evidence_documents[0].update(status='VERIFIED',reviewed_by='synthetic-assessor',reviewed_form_version=body['formVersion'])
+                        result = evidence_documents[0]
                 elif suffix.endswith('/evidence/synthetic-document/read-id') and method == 'POST':
                     id_reads.append(suffix)
                     if upload_state['fail_reading']:
@@ -325,10 +329,10 @@ try:
                     target = suffix.rsplit('/',1)[1]
                     prior = next((review for review in department_reviews if review['section']==target),None)
                     department_writes.append(body)
-                    if body['expectedReviewedAt'] != (prior['reviewed_at'] if prior else None):
+                    if body['formVersion'] != stored_cases[suffix.split('/')[0]]['version'] or body['expectedReviewedAt'] != (prior['reviewed_at'] if prior else None):
                         status, result = 409, {'error':'DEPARTMENT_REVIEW_CHANGED_OR_UNAVAILABLE'}
                     else:
-                        result = {'section':target,'state':body['state'],'note':body['note'],'reviewed_at':'2026-10-24T12:30:00.000001Z'}
+                        result = {'section':target,'state':body['state'],'note':body['note'],'reviewed_at':'2026-10-24T12:30:00.000001Z','reviewed_form_version':body['formVersion']}
                         if prior: department_reviews.remove(prior)
                         department_reviews.append(result)
                 elif suffix.endswith('/dohs'):
@@ -669,7 +673,7 @@ try:
             expect(page.get_by_role('button', name='Record evidence decision', exact=True)).to_be_enabled()
             # A decision by another assessor invalidates this selection without
             # silently discarding its note or permitting a second decision.
-            evidence_documents[0].update(status='VERIFIED')
+            evidence_documents[0].update(status='VERIFIED',reviewed_form_version=stored_cases['synthetic-case-1']['version'])
             refresh_evidence.click()
             expect(page.get_by_role('button', name='Record evidence decision', exact=True)).to_be_disabled()
             expect(review_note).to_have_value('Synthetic original and certification checked.')
@@ -686,12 +690,34 @@ try:
             review_note.fill('Synthetic original and certification checked.')
             page.get_by_label('Content, applicant match and applicable signatures / commissioning checked', exact=True).check()
             page.get_by_label('ID certification confirmed where required', exact=True).check()
+            # A remote save must reject a review of the old loaded form and keep its draft note.
+            stored_cases['synthetic-case-1']['version'] += 1
+            page.get_by_role('button', name='Record evidence decision', exact=True).click()
+            page.get_by_text('The saved form or document changed, or required certification is incomplete. Your note is retained. Reopen the current saved case and review the document again before recording a decision.', exact=True).wait_for()
+            expect(review_note).to_have_value('Synthetic original and certification checked.')
+            stored_cases['synthetic-case-1']['version'] -= 1
             page.get_by_role('button', name='Record evidence decision', exact=True).click()
             page.get_by_text('Evidence review recorded.', exact=True).wait_for()
             expect(page.locator('.evidence-register').get_by_text('applicant id · verified · clean', exact=True)).to_be_visible()
             expect(review_note).to_have_value('')
+            # A real capture edit changes the saved version. The same clean file
+            # becomes reviewable again, without another upload or malware scan.
+            steps.nth(0).click()
+            page.get_by_label('Contact number', exact=True).fill('0000000000')
+            page.get_by_role('button', name='Save current form', exact=True).click()
+            page.get_by_text('Draft saved · version 4', exact=True).wait_for()
+            steps.nth(3).click()
+            expect(page.locator('.evidence-register').get_by_text('applicant id · review required after form change · clean', exact=True)).to_be_visible()
+            page.get_by_role('button', name='Review document', exact=True).click()
+            review_note.fill('Synthetic document checked against edited form.')
+            page.get_by_label('Content, applicant match and applicable signatures / commissioning checked', exact=True).check()
+            page.get_by_label('ID certification confirmed where required', exact=True).check()
+            page.get_by_role('button', name='Record evidence decision', exact=True).click()
+            page.get_by_text('Evidence review recorded.', exact=True).wait_for()
+            assert evidence_documents[0]['reviewed_form_version'] == 4
+            expect(page.locator('.evidence-register').get_by_text('applicant id · verified · clean', exact=True)).to_be_visible()
             # Department drafts retain their edit-start token even after a register refresh.
-            department_reviews.append({'section':'PAGE_2','state':'COMPLETE','note':'Existing synthetic section decision.','reviewed_at':'2026-10-24T12:00:00.000001Z'})
+            department_reviews.append({'section':'PAGE_2','state':'COMPLETE','note':'Existing synthetic section decision.','reviewed_at':'2026-10-24T12:00:00.000001Z','reviewed_form_version':4})
             project_role['value'] = 'DOHS_REVIEWER'
             page.locator('summary', has_text='Account').click()
             page.get_by_role('button', name='Refresh projects', exact=True).click()
@@ -712,7 +738,7 @@ try:
             refresh_evidence.click()
             expect(page.get_by_role('textbox', name='Departmental review note · at least 10 characters', exact=True)).to_have_value('My pending synthetic section decision.')
             page.get_by_role('button', name='Record departmental decision', exact=True).click()
-            page.get_by_text('This section changed since editing started. Your note is retained. Use Reload selected section to load the current decision.', exact=True).wait_for()
+            page.get_by_text('The saved form or section changed since editing started. Your note is retained. Reopen the current saved case, then reload the selected section before recording a decision.', exact=True).wait_for()
             assert department_writes[-1]['expectedReviewedAt'] == '2026-10-24T12:00:00.000001Z'
             page.once('dialog', lambda dialog: dialog.accept())
             page.get_by_role('button', name='Reload selected section', exact=True).click()
