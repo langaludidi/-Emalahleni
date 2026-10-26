@@ -1,20 +1,19 @@
-# Emalahleni beneficiary assurance
+# Vectra Assure
 
-Development source for the Cloudflare staging app.
+Vectra Assure is Vectra Solutions' application and evidence workspace. Source is in [`emalahleni-app/`](./emalahleni-app/). Existing backend and repository identifiers keep their original names.
 
-## Download
+**App:** https://app.vectrasa.co.za  
+**Fallback:** https://emalahleni-api-staging.ludidil.workers.dev
 
-Open [Emalahleni_Build.zip](./Emalahleni_Build.zip), then click **Download raw file** (the download arrow above the file). The ZIP is the earlier version 0.2 snapshot. Use **Code → Download ZIP** for the latest source, including the email-verification flow. The application is in `emalahleni-app/`.
+The app remains a **synthetic-data development build**. Capture, encrypted draft saving, private document upload/scanning, ID suggestions, assessor/DoHS workspaces, draft PDF exports and the project dashboard are implemented. Rules are provisional and do not approve submission readiness.
 
-## New features
+## Current verification
 
-- Read embedded photograph GPS/capture dates with exifr and apply them as unconfirmed proposals. EXIF values are linked to the verified photograph's file hash.
-- Generate preview or recorded-case verification summaries with react-pdf.
-- Combine verified, clean evidence into draft PDF packs with pdf-lib, checking file hashes and the case fingerprint.
-- Preserve full DoHS review timestamp precision for concurrency checks.
-- Request and verify an email code when Neon blocks sign-in for an unverified email.
+- Live synthetic stored-file upload, ClamAV scanning and ID extraction passed on 19 October 2026. The deployed browser confirmation/save/full-reload/reopen journey passed on 20 October. Its temporary diagnostic account and membership were disabled afterward.
+- The 26 October [app CI](https://github.com/langaludidi/-Emalahleni/actions/runs/40283721875) and [scanner CI](https://github.com/langaludidi/-Emalahleni/actions/runs/40283721803) passed. App checks include 42 tests, database upload concurrency, type/build validation and desktop/mobile journeys with controlled synthetic API fixtures.
+- The custom domain passed DNS, certificate-verified HTTPS, health, private API rejection and exact credentialed Auth-origin checks on 26 October. Account-owner acceptance on this new browser origin is a separate remaining check.
 
-The feature libraries are MIT licensed; their notices are included in `emalahleni-app/THIRD_PARTY_LICENSES.md`.
+The [application guide](./emalahleni-app/README.md#launch-gates) lists the remaining launch gates, evidence and responsible parties: new-domain account acceptance, live multi-role/project handoffs, approved rules and submission authority, real-data handling, and recovery/operational acceptance. Domain setup does not enable real beneficiary processing.
 
 ## Run
 
@@ -29,14 +28,15 @@ npm run build
 npm run dev
 ```
 
-Open http://localhost:8787.
+Open http://localhost:8787. Credentials are excluded from the repository.
 
-## Verification
+## Guides and source downloads
 
-Seventeen local tests passed, including real EXIF parsing, generated PDF inspection, evidence filtering, hash mismatches and stale-pack rejection. Frontend and Worker dry-run bundles built successfully. The [GitHub build/browser run](https://github.com/langaludidi/-Emalahleni/actions/runs/38540486238) passed desktop/mobile Chromium journeys and generated PDF downloads. The isolated Neon document integration run also passed, using real database isolation and explicit storage/scanner doubles.
+- [Application configuration and launch gates](./emalahleni-app/README.md)
+- [Capture, evidence and reviewer workflows](./emalahleni-app/WORKFLOWS.md)
+- [Custom domain and mail DNS](./emalahleni-app/DOMAIN_SETUP.md)
+- [Private scanner deployment](./emalahleni-app/scanner/DEPLOYMENT.md)
+- [Third-party licence notices](./emalahleni-app/THIRD_PARTY_LICENSES.md)
 
-## Deployment and remaining work
+Use **Code → Download ZIP** for current source. `Emalahleni_Build.zip` is the older version 0.2 snapshot, retained as a historical download. See the application guide for the implemented EXIF/PDF features and their evidence limits.
 
-The [staging preview](https://emalahleni-api-staging.ludidil.workers.dev) is deployed through Cloudflare Workers Builds from `main`. On 14 October 2026, the build succeeded, the operator confirmed the browser preview and entry of the three runtime secrets, and the deployed R2 fixed-key probe returned `reachable` with writes disabled. Read [the deployment guide](./emalahleni-app/README.md) for configuration and evidence limits. Credentials are excluded. Authenticated synthetic case access is enabled when the runtime secrets are configured; document uploads remain disabled.
-
-PDF exports remain drafts while the rules are provisional. Printed photo overlays still need manual entry or OCR. The prepared restricted database credential and scoped staging database probes passed. Browser email verification, sign-in, saved-case reload and sign-out remain pending. Scanner integration and the complete storage upload/review/download flow, physical phone verification, final rules approval and operational safeguards remain outstanding. This is a development build, not a production release.
