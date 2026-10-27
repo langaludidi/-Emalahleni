@@ -9,7 +9,7 @@ import { HttpError } from './http';
 import { listBeneficiaryPdfs } from './smart-capture-drive';
 import { discoveryVersion, publicImportSummary, type ImportState } from './smart-capture-import';
 
-type ServiceEnv = {
+export type ServiceEnv = {
  SMART_CAPTURE_ENABLED?: string;
  SMART_CAPTURE_DRIVE_CLIENT_EMAIL?: string;
  SMART_CAPTURE_DRIVE_PRIVATE_KEY?: string;
@@ -23,14 +23,13 @@ const listRow=z.object({
  attempt_count:z.number().int(),error_code:z.string().nullable(),
 });
 
-async function serviceAccountToken(env:ServiceEnv):Promise<string>{
- const email=env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,secret=env.SMART_CAPTURE_DRIVE_PRIVATE_KEY;
+export async function googleServiceToken(email:string|undefined,secret:string|undefined,scope:string):Promise<string>{
  if(!email||!secret)throw new HttpError(503,'DRIVE_CREDENTIAL_UNAVAILABLE');
  let key: CryptoKey;
  try {key=await importPKCS8(secret.replace(/\\n/g,'\n'),'RS256');}
  catch {throw new HttpError(503,'DRIVE_CREDENTIAL_UNAVAILABLE');}
  const now=Math.floor(Date.now()/1000);
- const assertion=await new SignJWT({scope:'https://www.googleapis.com/auth/drive.readonly'})
+ const assertion=await new SignJWT({scope})
   .setProtectedHeader({alg:'RS256',typ:'JWT'}).setIssuer(email)
   .setAudience('https://oauth2.googleapis.com/token').setIssuedAt(now).setExpirationTime(now+300).sign(key);
  let response:Response;
@@ -45,7 +44,7 @@ async function serviceAccountToken(env:ServiceEnv):Promise<string>{
  return data.access_token;
 }
 
-function approvedFolder(env:ServiceEnv,sourceId:string):string{
+export function approvedFolder(env:ServiceEnv,sourceId:string):string{
  if(!env.SMART_CAPTURE_DRIVE_SOURCES_JSON)throw new HttpError(503,'SMART_CAPTURE_SOURCE_NOT_CONFIGURED');
  let sources:unknown;
  try{sources=JSON.parse(env.SMART_CAPTURE_DRIVE_SOURCES_JSON);}catch{throw new HttpError(503,'SMART_CAPTURE_SOURCE_NOT_CONFIGURED');}
@@ -93,7 +92,7 @@ export async function smartCaptureSync(db:Database,actor:string,projectId:string
  if(!membership.length)throw new HttpError(403,'PROJECT_WRITE_DENIED');
  if(!registered.length)throw new HttpError(404,'SMART_CAPTURE_SOURCE_UNAVAILABLE');
  const folder=approvedFolder(env,source);
- const token=await serviceAccountToken(env);
+ const token=await googleServiceToken(env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,env.SMART_CAPTURE_DRIVE_PRIVATE_KEY,'https://www.googleapis.com/auth/drive.readonly');
  const result=await listBeneficiaryPdfs({approvedFolderId:folder,accessToken:token,pageToken});
  const identifiers=result.files.map(file=>({
   id:file.providerFileId,version:discoveryVersion(file),size:file.sizeBytes
