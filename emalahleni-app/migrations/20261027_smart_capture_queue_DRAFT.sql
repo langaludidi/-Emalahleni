@@ -59,6 +59,12 @@ CREATE INDEX smart_capture_imports_claim_idx
   ON public.smart_capture_imports (state, claimed_at)
   WHERE state IN ('QUEUED','FETCHING','QUARANTINED','SCANNING','EXTRACTING','COMMITTING');
 
+-- A beneficiary's Drive folder may contain many supporting PDFs. Never create
+-- multiple VectraSA cases from separate documents in the same beneficiary folder.
+CREATE UNIQUE INDEX smart_capture_one_case_per_beneficiary_folder
+  ON public.smart_capture_imports (project_id,source_id,provider_folder_id)
+  WHERE state='COMMITTED';
+
 -- The same case must not be committed to multiple imports without a future,
 -- explicitly reviewed exception workflow.
 CREATE UNIQUE INDEX smart_capture_one_import_per_application
