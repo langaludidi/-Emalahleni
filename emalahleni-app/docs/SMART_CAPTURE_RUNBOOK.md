@@ -212,3 +212,15 @@ User-provided Cloudflare screenshots established:
 The source of a credentials-free synthetic Worker is now versioned at `docs/smart-capture-synthetic-worker.ts` for future reproducibility; GitHub CI asserts it cannot reference production Drive/Neon/R2 bindings. The current dashboard Worker was edited manually, so future source-of-truth alignment requires an explicitly authorised standalone test Worker deployment, not a production deploy.
 
 **Security constraint:** The consumer of a production queue must validate a separate versioned message schema and reauthorise each import. Never route schema-1 real Smart Capture messages to the synthetic Worker: it acknowledges and discards non-test payloads by design. Never attach a real producer to this synthetic queue. Keep all Smart Capture processing feature flags off until the canonical DB privilege/audit gaps and document privacy approvals are resolved.
+
+## SC-030 — isolated synthetic audited draft creation validated
+
+On **27 October 2026**, `migrations/20261027_smart_capture_SYNTHETIC_BRANCH_AUDIT_FIXTURE.sql` was applied **only to Neon branch** `br-proud-union-zaded8kk` in project `noisy-pond-49029240`. This is a synthetic fixture, not a deployable canonical migration. It adds `audit_events` with FORCE RLS, narrowly scoped INSERT/SELECT grants, and a restrictive `applications` INSERT policy permitting only active project writers to create incomplete DRAFTs. No UPDATE or DELETE privileges were granted to the restricted runtime role.
+
+Verified inside a transaction as `emalahleni_worker`, actor `synthetic:test:alpha-manager`:
+- Complete synthetic processing state transition through `NEEDS_REVIEW`.
+- One `applications` row inserted with a synthetic reference; its `smart_capture_imports` record moved to `COMMITTED`; one `DRAFT_CREATED` audit event inserted.
+- The transaction was rolled back to a savepoint: no synthetic application, import commitment or audit event persisted.
+- A direct application INSERT attempted under actor `synthetic:sc018:alpha-auditor` was **rejected** by `sc030_case_writer_insert` RLS.
+
+The isolated DB still has **no login credentials** for `emalahleni_worker`; database testing uses session-scoped `SET LOCAL ROLE` instead. No DB password was exported, no Cloudflare secret configured, no network connection from the test Worker to Neon exists. Any live application/production migration requires canonical schema reconciliation and a separate security sign-off, rather than installing this synthetic audit fixture in a non-test environment.
