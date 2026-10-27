@@ -58,10 +58,12 @@ export default function SmartCaptureReview(){
  },[root]);
  function changeApplicant(key:keyof ExtractionProposal['applicant'],value:string|boolean|null){
   setProposal(current=>current?{...current,applicant:{...current.applicant,[key]:value}}:null);
+  setChecked(current=>current.filter(field=>field!=='applicant.'+key));
   setSuccess('');
  }
  function changeHousehold(key:keyof ExtractionProposal['household'],value:unknown){
   setProposal(current=>current?{...current,household:{...current.household,[key]:value}}:null);
+  setChecked(current=>current.filter(field=>field!=='household.'+key));
   setSuccess('');
  }
  function acknowledge(key:string,verified:boolean){
@@ -77,6 +79,7 @@ export default function SmartCaptureReview(){
   try{
    const result=await call<{version:number}>(root+'/proposal','PUT',{version:data.version,proposal});
    setData(d=>d?{...d,version:result.version,proposal}:null);
+   setChecked([]);
    setSuccess('Corrections saved securely. No VectraSA case has been created.');
   }catch(e){setError(e instanceof Error?e.message:'Review save failed');}
   finally{setBusy(false);}
