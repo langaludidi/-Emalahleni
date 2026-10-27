@@ -83,7 +83,10 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    errorCode='SMART_CAPTURE_PDF_TOO_LARGE';throw Error(errorCode);
   }
   const remoteRevision=meta.data.version==null?null:`v:${meta.data.version}`;
-  if(remoteRevision!==null&&remoteRevision!==item.source_version){
+  const md5Version=meta.data.md5Checksum&&Number.isFinite(Date.parse(meta.data.modifiedTime))
+    ?`m:${Date.parse(meta.data.modifiedTime)}:${meta.data.md5Checksum.toLowerCase()}`:null;
+  if((remoteRevision!==null&&remoteRevision!==item.source_version)||
+     (remoteRevision===null&&md5Version!==item.source_version)){
    errorCode='DRIVE_SOURCE_CHANGED';throw Error(errorCode);
   }
   const mediaUrl=new URL(metaUrl);
