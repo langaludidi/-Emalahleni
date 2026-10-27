@@ -33,3 +33,4 @@ import './smart-capture-queue-config.test.ts';
 import './smart-capture-synthetic-worker.test.ts';
 import './smart-capture-synthetic-audit.test.ts';
 import './smart-capture-synthetic-neon-worker.test.ts';
+import './smart-capture-neon-probe-config.test.ts';
