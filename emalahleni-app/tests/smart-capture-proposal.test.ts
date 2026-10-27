@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {proposeCaseForm,extractionProposalSchema} from '../src/smart-capture-proposal';
+import {proposeCaseForm,extractionProposalSchema,type ConfirmationInput} from '../src/smart-capture-proposal';
 const applicant={firstNames:'Synthetic',surname:'Example',idNumber:'0000000000000',phone:null,maritalStatus:'SINGLE' as const,
  spouseName:null,disability:false,disaster:false,disasterDetails:null,propertyOwned:false,propertySold:false};
-const data=()=>({proposal:{version:1 as const,applicant:{...applicant},household:{incomeSource:'UNEMPLOYED' as const,dependants:[]},
+const data=():ConfirmationInput=>({proposal:{version:1 as const,applicant:{...applicant},household:{incomeSource:'UNEMPLOYED' as const,dependants:[]},
  extraFields:{},provenance:{},sections:[]},confirmedFields:['applicant.firstNames','applicant.surname','applicant.idNumber','applicant.maritalStatus',
  'applicant.disability','applicant.disaster','applicant.propertyOwned','applicant.propertySold','household.incomeSource'],confirmedUnknownBooleans:[]});
 test('SC-005 review mapping never manufactures site findings',()=>{
@@ -14,7 +14,7 @@ test('SC-005 review mapping never manufactures site findings',()=>{
  assert.equal(r.form.site.latitude,null);
 });
 test('SC-005 unresolved applicant boolean never defaults silently to false',()=>{
- const p=data();p.proposal.applicant.disability=null as unknown as boolean;
+ const p=data();p.proposal.applicant.disability=null;
  const r=proposeCaseForm(p);assert.ok(r.blockingIssues.includes('UNRESOLVED_BOOLEAN_disability'));
 });
 test('SC-005 third dependant is a blocker instead of silent truncation',()=>{
