@@ -15,6 +15,7 @@ import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
 import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-capture-api';
 import {processSmartCaptureImport} from './smart-capture-process';
+import {readSmartCaptureProposal,saveSmartCaptureProposal,confirmSmartCaptureProposal,downloadSmartCapturePdf} from './smart-capture-review';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -99,6 +100,21 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureReviewRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/(proposal|confirm|pdf)$/i);
+    if(smartCaptureReviewRoute){
+      const project=z.uuid().parse(smartCaptureReviewRoute[1]);
+      const imported=z.uuid().parse(smartCaptureReviewRoute[2]);
+      const action=smartCaptureReviewRoute[3];
+      if(action==='proposal'&&request.method==='GET')
+        return json(await readSmartCaptureProposal(db,actor,project,imported,env));
+      if(action==='proposal'&&request.method==='PUT')
+        return json(await saveSmartCaptureProposal(db,actor,project,imported,await body(request),env));
+      if(action==='confirm'&&request.method==='POST')
+        return json(await confirmSmartCaptureProposal(db,actor,project,imported,await body(request),env));
+      if(action==='pdf'&&request.method==='GET')
+        return await downloadSmartCapturePdf(db,actor,project,imported,env);
+      throw new HttpError(405,'METHOD_NOT_ALLOWED');
+    }
     const smartCaptureProcessRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/process$/i);
     if(smartCaptureProcessRoute){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
