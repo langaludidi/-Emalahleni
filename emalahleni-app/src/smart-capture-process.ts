@@ -32,13 +32,17 @@ const fileMetadata=z.object({
 async function updateState(db:Database,actor:string,project:string,id:string,from:string,to:string,sha?:string,key?:string){
  const [rows]=await db.forActor(actor,[{query:`UPDATE public.smart_capture_imports SET state=$4,
   content_sha256=COALESCE($5,content_sha256),storage_key=COALESCE($6,storage_key),updated_at=now()
-  WHERE id=$1 AND project_id=$2 AND state=$3 RETURNING id`,params:[id,project,from,to,sha??null,key??null]}]);
+  WHERE id=$1 AND project_id=$2 AND state=$3
+   AND claimed_by=current_setting('app.actor_id',true)
+   AND claimed_at IS NOT NULL RETURNING id`,params:[id,project,from,to,sha??null,key??null]}]);
  if(!rows.length)throw new HttpError(409,'SMART_CAPTURE_STATE_CHANGED');
 }
 async function markFailed(db:Database,actor:string,project:string,id:string,code:string){
  await db.forActor(actor,[{query:`UPDATE public.smart_capture_imports
   SET state='FAILED',error_code=$3,claimed_at=NULL,claimed_by=NULL,updated_at=now()
-  WHERE id=$1 AND project_id=$2 AND state IN ('FETCHING','QUARANTINED','SCANNING','EXTRACTING')`,
+  WHERE id=$1 AND project_id=$2
+   AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
+   AND state IN ('FETCHING','QUARANTINED','SCANNING','EXTRACTING')`,
   params:[id,project,code]}]);
 }
 
@@ -147,11 +151,13 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
     INSERT INTO public.smart_capture_proposals (import_id,project_id,ciphertext)
     SELECT $1,$2,$3 WHERE EXISTS (
       SELECT 1 FROM public.smart_capture_imports WHERE id=$1 AND project_id=$2 AND state='EXTRACTING'
+       AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
     ) ON CONFLICT (import_id) DO NOTHING RETURNING import_id
    ), advanced AS (
     UPDATE public.smart_capture_imports SET state='NEEDS_REVIEW',
     claimed_at=NULL,claimed_by=NULL,updated_at=now()
     WHERE id=$1 AND project_id=$2 AND state='EXTRACTING'
+     AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
      AND EXISTS (SELECT 1 FROM inserted)
     RETURNING id
    ) SELECT id FROM advanced`,
