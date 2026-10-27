@@ -85,3 +85,20 @@ Gate E: limited authorised live pilot with controlled project, explicit rollback
 Gate F: production go/no-go and operational monitoring.
 
 Keep `SMART_CAPTURE_ENABLED=false` and `SMART_CAPTURE_PROCESSING_ENABLED=false` until the applicable gates complete. The current repository's existing submission-readiness rules remain provisional and are not altered.
+
+## 7. Cloudflare Queue deployment gate (not provisioned)
+
+The Worker now includes a queue producer (`POST /api/projects/:project/smart-capture/imports/:id/enqueue`) and sequential queue consumer. Both remain disabled unless `SMART_CAPTURE_QUEUE_ENABLED=true` and the dedicated `SMART_CAPTURE_QUEUE` producer binding are provisioned. **Do not set these flags in the existing live Worker.** A queue resource and consumer subscription must first be created by an authorised Cloudflare operator and tested on a disposable Worker environment, not the production domain.
+
+Example bindings to add **only in the isolated test environment** after the queue exists:
+
+```json
+"queues": {
+  "producers": [{"binding": "SMART_CAPTURE_QUEUE", "queue": "vectrasa-smart-capture-test"}],
+  "consumers": [{"queue": "vectrasa-smart-capture-test", "max_batch_size": 1, "max_batch_timeout": 5, "max_retries": 0, "dead_letter_queue": "vectrasa-smart-capture-dlq-test"}]
+}
+```
+
+This example is not added to the live `wrangler.jsonc` because creating a queue, DLQ, and permissions requires separate operational approval. Messages contain only import UUID, project UUID and the authenticated initiating actor. A duplicate message is protected by the existing atomic `DISCOVERED -> FETCHING` claim. Sequential consumer processing limits per-invocation concurrency; a separate Cloudflare consumer concurrency limit of **one** must also be set in the test environment. Failed jobs are stored as `FAILED` and recovered through explicit, bounded operator retry, not automatic queue replay.
+
+**Remaining blocker:** queue delivery acknowledgment and crash recovery need end-to-end tests, including consumer termination between external provider call and database state update. Do not enable unattended bulk processing until an approved lease/reconciler handles stale `FETCHING`, `SCANNING` and `EXTRACTING` states without repeating ambiguous external work.
