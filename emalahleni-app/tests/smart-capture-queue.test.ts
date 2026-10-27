@@ -35,7 +35,7 @@ test('SC-027 enabled consumer acknowledges successful synthetic processing',asyn
  }]} as never;
  await consumeSmartCaptureBatch(batch,{
   SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
-  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'postgresql://emalahleni_worker:synthetic@synthetic.neon.tech/synthetic?sslmode=require'
  } as never,async()=>{processed++;return {state:'NEEDS_REVIEW'} as never;});
  assert.equal(processed,1);assert.equal(acked,1);assert.equal(retried,0);
 });
@@ -44,7 +44,7 @@ test('SC-027 malformed queue messages never invoke the processor',async()=>{
  const batch={messages:[{body:{schema:1,projectId:project,importId:id,actorId:'synthetic',pdf:'secret'},ack:()=>{acked++;}}]} as never;
  await consumeSmartCaptureBatch(batch,{
   SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
-  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'postgresql://emalahleni_worker:synthetic@synthetic.neon.tech/synthetic?sslmode=require'
  } as never,async()=>{processed++;return {} as never;});
  assert.equal(processed,0);assert.equal(acked,1);
 });
@@ -54,7 +54,7 @@ test('SC-027 duplicate atomic-claim denials are acknowledged, not replayed',asyn
   ack:()=>{acked++;},retry:()=>{retried++;}}]} as never;
  await consumeSmartCaptureBatch(batch,{
   SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
-  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'postgresql://emalahleni_worker:synthetic@synthetic.neon.tech/synthetic?sslmode=require'
  } as never,async()=>{throw Object.assign(new Error('duplicate'),{code:'SMART_CAPTURE_CLAIM_DENIED'});});
  assert.equal(acked,1);assert.equal(retried,0);
 });
