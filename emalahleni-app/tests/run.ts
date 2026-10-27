@@ -22,3 +22,4 @@ import './smart-capture-queue.test.ts';
 import './smart-capture-recovery.test.ts';
 import './smart-capture-fencing.test.ts';
 import './smart-capture-attempt-token.test.ts';
+import './smart-capture-migration.test.ts';
