@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Database } from './database';
 import { HttpError } from './http';
 import { listBeneficiaryPdfs } from './smart-capture-drive';
+import {listBeneficiaryFolders} from './smart-capture-folders';
 import { discoveryVersion, publicImportSummary, type ImportState } from './smart-capture-import';
 
 export type ServiceEnv = {
@@ -93,18 +94,23 @@ export async function smartCaptureSync(db:Database,actor:string,projectId:string
  if(!registered.length)throw new HttpError(404,'SMART_CAPTURE_SOURCE_UNAVAILABLE');
  const folder=approvedFolder(env,source);
  const token=await googleServiceToken(env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,env.SMART_CAPTURE_DRIVE_PRIVATE_KEY,'https://www.googleapis.com/auth/drive.readonly');
- const result=await listBeneficiaryPdfs({approvedFolderId:folder,accessToken:token,pageToken});
- const identifiers=result.files.map(file=>({
-  id:file.providerFileId,version:discoveryVersion(file),size:file.sizeBytes
- }));
+ // Root contains one separate folder per beneficiary. Do not scan only root PDFs.
+ const folderPage=await listBeneficiaryFolders({rootFolderId:folder,accessToken:token,pageToken});
+ const identifiers:Array<{id:string;folderId:string;version:string;size:number}>=[];
+ for(const child of folderPage.folders){
+  const files=await listBeneficiaryPdfs({approvedFolderId:child.id,accessToken:token});
+  if(files.nextPageToken!==null)throw new HttpError(409,'BENEFICIARY_FOLDER_PDF_LIMIT');
+  for(const file of files.files)identifiers.push({
+   id:file.providerFileId,folderId:child.id,version:discoveryVersion(file),size:file.sizeBytes
+  });
+ }
  let newRows=0;
  if(identifiers.length){
   const [rows]=await db.forActor(actor,[{
-   // Insert one bounded page in one transaction, rather than N HTTP transactions.
    query:`INSERT INTO public.smart_capture_imports
-    (project_id,source_id,provider_file_id,source_version,content_size_bytes,state)
-    SELECT $1::uuid,$2::uuid,f.id,f.version,f.size,'DISCOVERED'
-    FROM jsonb_to_recordset($3::jsonb) AS f(id text,version text,size bigint)
+    (project_id,source_id,provider_folder_id,provider_file_id,source_version,content_size_bytes,state)
+    SELECT $1::uuid,$2::uuid,f.folder_id,f.id,f.version,f.size,'DISCOVERED'
+    FROM jsonb_to_recordset($3::jsonb) AS f(id text,folder_id text,version text,size bigint)
     ON CONFLICT (project_id,source_id,provider_file_id,source_version) DO NOTHING
     RETURNING id`,
    params:[project,source,JSON.stringify(identifiers)]
@@ -112,6 +118,7 @@ export async function smartCaptureSync(db:Database,actor:string,projectId:string
   newRows=rows.length;
  }
  return {discovered:identifiers.length,newImports:newRows,
-   hasMore:result.nextPageToken!==null,nextPageToken:result.nextPageToken};
+   foldersChecked:folderPage.folders.length,
+   hasMore:folderPage.nextPageToken!==null,nextPageToken:folderPage.nextPageToken};
 
 }
