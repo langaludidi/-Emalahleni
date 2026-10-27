@@ -22,3 +22,25 @@ test('SC-011 no page text is never interpreted as a verified document',()=>{
  assert.deepEqual(classifyDocumentPages({text:'',pages:[{pageNumber:1}]}),
  [{type:'UNKNOWN',fromPage:1,toPage:1,status:'NOT_FOUND'}]);
 });
+
+test('SC-I04 inconsistent OCR page numbering fails closed rather than inventing evidence page ranges',()=>{
+ const text='Affidavit commissioner of oaths Affidavit commissioner of oaths';
+ const sections=classifyDocumentPages({text,pages:[
+  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:0,endIndex:30}]}}},
+  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:30,endIndex:62}]}}}
+ ]});
+ assert.deepEqual(sections,[
+  {type:'AFFIDAVIT',fromPage:1,toPage:1,status:'DETECTED'},
+  {type:'UNKNOWN',fromPage:2,toPage:2,status:'NOT_FOUND'}
+ ]);
+});
+test('SC-I04 out-of-order page identifiers cannot be grouped into a false supporting document',()=>{
+ const text='Birth certificate date of birth';
+ assert.deepEqual(classifyDocumentPages({text,pages:[
+  {pageNumber:2,layout:{textAnchor:{textSegments:[{startIndex:0,endIndex:text.length}]}}},
+  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:0,endIndex:text.length}]}}}
+ ]}),[
+  {type:'UNKNOWN',fromPage:1,toPage:1,status:'NOT_FOUND'},
+  {type:'UNKNOWN',fromPage:2,toPage:2,status:'NOT_FOUND'}
+ ]);
+});
