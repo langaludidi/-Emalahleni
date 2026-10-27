@@ -184,3 +184,9 @@ The single-import `POST /api/projects/:projectId/smart-capture/imports/:importId
 Added `src/smart-capture-orphans.ts` with an explicitly **read-only** bounded R2 listing. It requires an active ADMIN/MANAGER project membership, feature flags, and the private R2 binding; lists at most 100 object keys for that project; compares them to project-scoped import `storage_key` references; and returns only aggregate counts (`retained`, `orphanCandidates`, `invalid`, `truncated`). No PDF contents or object keys are returned and no deletion is performed. Synthetic tests exercise a retained object, a stale attempt-specific object, a malformed key, and an unauthorised actor.
 
 The inventory is not exposed through an HTTP route and is not enabled. Before a purge can be implemented, establish retention and legal-hold policy, a minimum orphan age, bounded pagination, an active-worker safety window, an operator approval path, and a two-step dry-run/delete audit trail. An object missing from the current DB reference is a **candidate**, not proof that it can be deleted.
+
+## SC-027 — conservative orphan age and synthetic queue-consumer tests
+
+The read-only orphan inventory now requires an R2 object to have a valid upload timestamp **at least 24 hours old** before counting it as a potential orphan. Recent and undated objects are reported separately as `tooRecent` and never qualify for cleanup. This is not an approved deletion policy; no purge route or delete operation exists.
+
+The queue consumer test suite now covers successful synthetic acknowledgement, malformed message rejection without processing, and duplicate-claim acknowledgement without retry. These are **in-process mock tests**, not a provisioned Cloudflare Queue or end-to-end scanner test. Provisioning an isolated queue, dead-letter queue, bounded retry policy and runtime credentials remains a separate infrastructure gate.
