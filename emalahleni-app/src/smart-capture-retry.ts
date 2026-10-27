@@ -36,7 +36,7 @@ export async function retrySmartCaptureImport(db:Database,actor:string,projectId
  if(!decision.allowed)throw new HttpError(409,decision.reason);
  const [changed]=await db.forActor(actor,[{query:`
   UPDATE public.smart_capture_imports i SET
-    state='DISCOVERED',error_code=NULL,claimed_at=NULL,claimed_by=NULL,updated_at=now()
+    state='DISCOVERED',error_code=NULL,claimed_at=NULL,claimed_by=NULL,claim_token=NULL,updated_at=now()
   WHERE i.project_id=$1 AND i.id=$2 AND i.state='FAILED'
    AND i.error_code=$3 AND i.attempt_count=$4 AND i.attempt_count<3
    AND EXISTS (SELECT 1 FROM public.project_memberships m
