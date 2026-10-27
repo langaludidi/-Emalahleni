@@ -84,4 +84,4 @@ The Codex-built VectraSA application is the system of record for beneficiary cas
 - `docs/SMART_CAPTURE_NEON_PROBE_ACCEPTANCE.md` — one-message acceptance and rollback
 - Draft PR #11 — source changes, CI and review history
 
-**Next action:** complete SC-I01, then prioritise SC-I02 and SC-I04 without requiring user desktop access. Do not present any phase as approved or deployed until supported by evidence.
+**Current work:** SC-I01 source architecture inventory completed in `docs/SMART_CAPTURE_CODEX_ARCHITECTURE_BASELINE.md`, pending independent review and deployed runtime parity. SC-I04 page-number fail-closed fix and tests committed; latest CI pending. Continue SC-I02 canonical audit/privilege design and SC-I04 synthetic document tests without desktop access. Do not present any phase as approved or deployed until supported by evidence.
