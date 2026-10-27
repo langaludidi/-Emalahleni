@@ -29,21 +29,21 @@ const fileMetadata=z.object({
  modifiedTime:z.string(),md5Checksum:z.string().optional(),
 }).passthrough();
 
-async function updateState(db:Database,actor:string,project:string,id:string,from:string,to:string,sha?:string,key?:string){
+async function updateState(db:Database,actor:string,project:string,id:string,from:string,to:string,token:string,sha?:string,key?:string){
  const [rows]=await db.forActor(actor,[{query:`UPDATE public.smart_capture_imports SET state=$4,
   content_sha256=COALESCE($5,content_sha256),storage_key=COALESCE($6,storage_key),updated_at=now()
   WHERE id=$1 AND project_id=$2 AND state=$3
    AND claimed_by=current_setting('app.actor_id',true)
-   AND claimed_at IS NOT NULL RETURNING id`,params:[id,project,from,to,sha??null,key??null]}]);
+   AND claimed_at IS NOT NULL AND claim_token=$7 RETURNING id`,params:[id,project,from,to,sha??null,key??null,token]}]);
  if(!rows.length)throw new HttpError(409,'SMART_CAPTURE_STATE_CHANGED');
 }
-async function markFailed(db:Database,actor:string,project:string,id:string,code:string){
+async function markFailed(db:Database,actor:string,project:string,id:string,code:string,token:string){
  await db.forActor(actor,[{query:`UPDATE public.smart_capture_imports
-  SET state='FAILED',error_code=$3,claimed_at=NULL,claimed_by=NULL,updated_at=now()
+  SET state='FAILED',error_code=$3,claimed_at=NULL,claimed_by=NULL,claim_token=NULL,updated_at=now()
   WHERE id=$1 AND project_id=$2
    AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
-   AND state IN ('FETCHING','QUARANTINED','SCANNING','EXTRACTING')`,
-  params:[id,project,code]}]);
+   AND claim_token=$4 AND state IN ('FETCHING','QUARANTINED','SCANNING','EXTRACTING')`,
+  params:[id,project,code,token]}]);
 }
 
 export async function processSmartCaptureImport(db:Database,actor:string,projectId:string,importId:string,env:ProcessingEnv){
@@ -54,17 +54,18 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
   throw new HttpError(503,'SMART_CAPTURE_PROCESSING_NOT_CONFIGURED');
  const project=z.string().uuid().parse(projectId),id=z.string().uuid().parse(importId);
  // Atomic compare-and-set claim; two concurrent requests cannot claim a single DISCOVERED item.
+ const claimToken=crypto.randomUUID();
  const [claimed]=await db.forActor(actor,[{query:`
   UPDATE public.smart_capture_imports i SET
-   state='FETCHING',claimed_at=now(),claimed_by=$3,attempt_count=attempt_count+1,updated_at=now()
-  WHERE i.project_id=$1 AND i.id=$2 AND i.state='DISCOVERED'
+   state='FETCHING',claimed_at=now(),claimed_by=$3,claim_token=$4,attempt_count=attempt_count+1,updated_at=now()
+  WHERE i.project_id=$1 AND i.id=$2 AND i.state='DISCOVERED' AND i.attempt_count<3
    AND EXISTS (SELECT 1 FROM public.project_memberships m
     WHERE m.project_id=i.project_id AND m.user_id=$3 AND m.active
     AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER'))
    AND EXISTS (SELECT 1 FROM public.smart_capture_sources s
     WHERE s.project_id=i.project_id AND s.id=i.source_id AND s.enabled)
   RETURNING i.source_id,i.provider_folder_id,i.provider_file_id,i.source_version,i.content_size_bytes`,
-  params:[project,id,actor]}]);
+  params:[project,id,actor,claimToken]}]);
  if(!claimed.length)throw new HttpError(409,'SMART_CAPTURE_CLAIM_DENIED');
  const item=claimed[0] as {source_id:string;provider_folder_id:string;provider_file_id:string;source_version:string;content_size_bytes:number|string};
  let stage='FETCHING',errorCode='SMART_CAPTURE_PROCESSING_FAILED';
@@ -117,8 +118,8 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
   const hash=await digest(pdf);
   const storageKey=`smart-capture/quarantine/${project}/${id}/original.pdf`;
   await env.EVIDENCE_BUCKET.put(storageKey,pdf,{httpMetadata:{contentType:'application/pdf'}});
-  await updateState(db,actor,project,id,stage,'QUARANTINED',hash,storageKey);stage='QUARANTINED';
-  await updateState(db,actor,project,id,stage,'SCANNING');stage='SCANNING';
+  await updateState(db,actor,project,id,stage,'QUARANTINED',claimToken,hash,storageKey);stage='QUARANTINED';
+  await updateState(db,actor,project,id,stage,'SCANNING',claimToken);stage='SCANNING';
   let scanResponse:Response,scan:unknown;
   try{
    scanResponse=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{
@@ -135,11 +136,11 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
   }
   if(verdict.verdict==='INFECTED'){
    await env.EVIDENCE_BUCKET.delete(storageKey);
-   await updateState(db,actor,project,id,stage,'REJECTED');
+   await updateState(db,actor,project,id,stage,'REJECTED',claimToken);
    return {importId:id,state:'REJECTED'};
   }
   if(!scanResponse.ok){errorCode='SCANNER_UNAVAILABLE';throw Error(errorCode);}
-  await updateState(db,actor,project,id,stage,'EXTRACTING');stage='EXTRACTING';
+  await updateState(db,actor,project,id,stage,'EXTRACTING',claimToken);stage='EXTRACTING';
   const aiToken=await googleServiceToken(env.SMART_CAPTURE_AI_CLIENT_EMAIL,
    env.SMART_CAPTURE_AI_PRIVATE_KEY,'https://www.googleapis.com/auth/cloud-platform');
   const proposal=await processScannedPdfWithDocumentAi({pdf,accessToken:aiToken,
@@ -151,17 +152,17 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
     INSERT INTO public.smart_capture_proposals (import_id,project_id,ciphertext)
     SELECT $1,$2,$3 WHERE EXISTS (
       SELECT 1 FROM public.smart_capture_imports WHERE id=$1 AND project_id=$2 AND state='EXTRACTING'
-       AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
+       AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL AND claim_token=$4
     ) ON CONFLICT (import_id) DO NOTHING RETURNING import_id
    ), advanced AS (
     UPDATE public.smart_capture_imports SET state='NEEDS_REVIEW',
-    claimed_at=NULL,claimed_by=NULL,updated_at=now()
+    claimed_at=NULL,claimed_by=NULL,claim_token=NULL,updated_at=now()
     WHERE id=$1 AND project_id=$2 AND state='EXTRACTING'
-     AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL
+     AND claimed_by=current_setting('app.actor_id',true) AND claimed_at IS NOT NULL AND claim_token=$4
      AND EXISTS (SELECT 1 FROM inserted)
     RETURNING id
    ) SELECT id FROM advanced`,
-   params:[id,project,ciphertext]}]);
+   params:[id,project,ciphertext,claimToken]}]);
   if(!saved.length)throw new HttpError(409,'SMART_CAPTURE_STATE_CHANGED');
   return {importId:id,state:'NEEDS_REVIEW'};
  }catch(cause){
@@ -172,7 +173,7 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    'DOCUMENT_AI_RESPONSE_INVALID','DOCUMENT_AI_RESPONSE_TOO_LARGE',
    'DOCUMENT_AI_PDF_SIZE','DOCUMENT_AI_PDF_INVALID',
   ].includes(cause.message))errorCode=cause.message;
-  try{await markFailed(db,actor,project,id,errorCode);}catch{}
+  try{await markFailed(db,actor,project,id,errorCode,claimToken);}catch{}
   throw new HttpError(503,errorCode);
  }
 }
