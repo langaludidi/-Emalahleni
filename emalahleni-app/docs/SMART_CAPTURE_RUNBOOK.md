@@ -168,3 +168,9 @@ SC-021 additionally passed a negative test: editing a proposal while its import 
 - Two independently processed imports associated with the **same synthetic beneficiary folder** could not both be committed: PostgreSQL raised the `smart_capture_one_case_per_beneficiary_folder` uniqueness violation on the second commit and rolled back the whole test transaction. Follow-up counts were 2 baseline synthetic imports, 0 committed imports and 0 synthetic race-case applications.
 
 No actual Google Drive documents, beneficiary identities or production resources were involved. These tests validate isolated database rules, **not** queue wiring, real PDF scanning, production role grants, RLS under a live application runtime, or deployment authorisation.
+
+## SC-024 — attempt-scoped private storage
+
+Processing now stores each quarantined PDF under `smart-capture/quarantine/<project>/<import>/<attempt-token>/original.pdf` rather than a shared per-import object. The review endpoint validates the exact project/import prefix and a version-4 attempt token before reading from the private R2 bucket; the existing content SHA-256 verification remains. Failed attempts best-effort delete **only their own token-specific object**, preventing a stale attempt from overwriting or deleting a newer attempt's source document. This is code on the draft branch only and has not been deployed.
+
+**Still required:** operator-controlled orphan cleanup of crash-abandoned R2 objects, separate quarantine retention decisions, and an integration test that interrupts two workers while the newer worker uploads its file. Do not activate ingestion before these risks and privacy retention policies are reviewed.
