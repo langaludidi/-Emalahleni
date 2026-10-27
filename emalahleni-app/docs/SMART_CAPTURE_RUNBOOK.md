@@ -224,3 +224,9 @@ Verified inside a transaction as `emalahleni_worker`, actor `synthetic:test:alph
 - A direct application INSERT attempted under actor `synthetic:sc018:alpha-auditor` was **rejected** by `sc030_case_writer_insert` RLS.
 
 The isolated DB still has **no login credentials** for `emalahleni_worker`; database testing uses session-scoped `SET LOCAL ROLE` instead. No DB password was exported, no Cloudflare secret configured, no network connection from the test Worker to Neon exists. Any live application/production migration requires canonical schema reconciliation and a separate security sign-off, rather than installing this synthetic audit fixture in a non-test environment.
+
+## SC-031 — isolated least-privilege Neon probe role
+
+A test-only login role `vectra_sc_synthetic_limited` was created **by SQL** on the isolated test branch `br-proud-union-zaded8kk`. This was necessary because a role generated via Neon connector unexpectedly inherited `neon_superuser` and `BYPASSRLS`; that earlier role `vectra_sc_synthetic_probe` was deleted immediately and confirmed absent. The replacement role has `NOBYPASSRLS`, `NOINHERIT`, and no memberships. Its password was created and rotated without outputting credentials to chat or GitHub. It can only SELECT the single non-PII row in `smart_capture_test.integration_probe`; PostgreSQL denied its attempted SELECTs on `public.applications` and `public.smart_capture_imports`.
+
+The standalone test Worker source `src/smart-capture-synthetic-neon-worker.ts` accepts only a dedicated synthetic queue schema and, with an explicit flag, reads that harmless probe row. This is **not deployed**; do not overwrite the manually tested dashboard Worker or connect the real Smart Capture processing queue. See `docs/SMART_CAPTURE_SYNTHETIC_NEON_PROBE.md` for wiring and credential-handling restrictions. The role should be deleted after testing. No real beneficiary records were accessed.
