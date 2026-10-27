@@ -69,6 +69,18 @@ export async function confirmSmartCaptureProposal(db:Database,actor:string,proje
  const check=proposeCaseForm({proposal,confirmedFields:confirmation.confirmedFields,confirmedUnknownBooleans:[]});
  if(check.blockingIssues.length||check.reviewIssues.length)
   throw new HttpError(422,'SMART_CAPTURE_REVIEW_INCOMPLETE');
+ // Supporting-document PDFs from one beneficiary folder must not create
+ // independent beneficiary records. Database unique index is the final guard.
+ const [sameFolder]=await db.forActor(actor,[{query:`
+  SELECT existing.application_id FROM public.smart_capture_imports current_import
+  JOIN public.smart_capture_imports existing
+    ON existing.project_id=current_import.project_id
+   AND existing.source_id=current_import.source_id
+   AND existing.provider_folder_id=current_import.provider_folder_id
+  WHERE current_import.id=$1 AND current_import.project_id=$2
+   AND existing.state='COMMITTED' AND existing.id<>current_import.id
+  LIMIT 1`,params:[id,project]}],true);
+ if(sameFolder.length)throw new HttpError(409,'BENEFICIARY_FOLDER_ALREADY_LINKED');
  const caseId=crypto.randomUUID();
  const reference='SYN-SC-'+id.replace(/-/g,'').toUpperCase();
  const sealed=await encryptForm(check.form,env.FORM_ENCRYPTION_KEY,project,caseId);
