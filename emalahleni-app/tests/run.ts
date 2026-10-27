@@ -31,3 +31,4 @@ import './smart-capture-storage.test.ts';
 import './smart-capture-orphans.test.ts';
 import './smart-capture-queue-config.test.ts';
 import './smart-capture-synthetic-worker.test.ts';
+import './smart-capture-synthetic-audit.test.ts';
