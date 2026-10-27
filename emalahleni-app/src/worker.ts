@@ -73,6 +73,8 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     let actor: string;
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     await limitActorAction(request,env,actor);
+    if(path.includes('/smart-capture/')&&env.SMART_CAPTURE_ENABLED!=='true')
+      throw new HttpError(503,'SMART_CAPTURE_NOT_ENABLED');
     const db = new Database(env.DATABASE_URL);
     const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
     if(serviceProbe){
