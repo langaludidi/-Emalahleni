@@ -45,6 +45,20 @@ CREATE POLICY sc_imports_update ON public.smart_capture_imports FOR UPDATE
   m.project_id=smart_capture_imports.project_id
   AND m.user_id=current_setting('app.actor_id',true)
   AND m.active AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER')));
--- SQL privileges must be granted to the restricted runtime role by an
--- authorised migration operator, after reviewing role privileges.
+CREATE POLICY sc_proposals_update ON public.smart_capture_proposals FOR UPDATE
+ USING (EXISTS (SELECT 1 FROM public.project_memberships m
+  WHERE m.project_id=smart_capture_proposals.project_id
+  AND m.user_id=current_setting('app.actor_id',true)
+  AND m.active AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER')))
+ WITH CHECK (EXISTS (SELECT 1 FROM public.project_memberships m
+  WHERE m.project_id=smart_capture_proposals.project_id
+  AND m.user_id=current_setting('app.actor_id',true)
+  AND m.active AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER')));
+
+-- Runtime grants are subordinate to FORCE RLS and server-side actor checks.
+-- Reviewed migration operator must confirm this is the restricted application role.
+GRANT SELECT ON public.smart_capture_sources TO emalahleni_worker;
+GRANT SELECT,INSERT,UPDATE ON public.smart_capture_imports TO emalahleni_worker;
+GRANT SELECT,INSERT,UPDATE ON public.smart_capture_proposals TO emalahleni_worker;
+
 COMMIT;
