@@ -21,6 +21,7 @@ CREATE TABLE public.smart_capture_imports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL,
   source_id uuid NOT NULL,
+  provider_folder_id text NOT NULL CHECK (length(provider_folder_id) BETWEEN 10 AND 128),
   provider_file_id text NOT NULL CHECK (length(provider_file_id) BETWEEN 10 AND 128),
   source_version text NOT NULL CHECK (length(source_version) BETWEEN 1 AND 128),
   -- Full PDF hash becomes available after controlled download. Do not trust Drive MD5 as proof.
