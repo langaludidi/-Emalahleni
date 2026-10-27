@@ -27,3 +27,14 @@ test('No anonymous Smart Capture data endpoint is exposed',async()=>{
   assert.equal(response.status,401);
  }
 });
+
+test('SC-025 processor and source-sync routes use valid regex separators',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const source=readFileSync(new URL('../src/worker.ts',import.meta.url),'utf8');
+ const invalidSlash=String.fromCharCode(92,92,47);
+ for(const marker of ['const smartCaptureProcessRoute=','const smartCaptureRoute=']){
+  const line=source.split('\n').find((part:string)=>part.includes(marker));
+  assert.ok(line,marker);
+  assert.equal(line!.includes(invalidSlash),false,marker);
+ }
+});
