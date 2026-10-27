@@ -31,7 +31,11 @@ const fileMetadata=z.object({
 
 async function updateState(db:Database,actor:string,project:string,id:string,from:string,to:string,token:string,sha?:string,key?:string){
  const [rows]=await db.forActor(actor,[{query:`UPDATE public.smart_capture_imports SET state=$4,
-  content_sha256=COALESCE($5,content_sha256),storage_key=COALESCE($6,storage_key),updated_at=now()
+  content_sha256=COALESCE($5,content_sha256),storage_key=COALESCE($6,storage_key),
+  claimed_at=CASE WHEN $4='REJECTED' THEN NULL ELSE claimed_at END,
+  claimed_by=CASE WHEN $4='REJECTED' THEN NULL ELSE claimed_by END,
+  claim_token=CASE WHEN $4='REJECTED' THEN NULL ELSE claim_token END,
+  updated_at=now()
   WHERE id=$1 AND project_id=$2 AND state=$3
    AND claimed_by=current_setting('app.actor_id',true)
    AND claimed_at IS NOT NULL AND claim_token=$7 RETURNING id`,params:[id,project,from,to,sha??null,key??null,token]}]);
