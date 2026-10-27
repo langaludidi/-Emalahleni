@@ -17,6 +17,7 @@ import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-cap
 import {processSmartCaptureImport} from './smart-capture-process';
 import {retrySmartCaptureImport} from './smart-capture-retry';
 import {enqueueSmartCaptureImport} from './smart-capture-queue';
+import {reconcileStaleSmartCaptureImports} from './smart-capture-recovery';
 import {readSmartCaptureProposal,saveSmartCaptureProposal,confirmSmartCaptureProposal,downloadSmartCapturePdf} from './smart-capture-review';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
@@ -106,6 +107,12 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureRecoverRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/recover$/i);
+    if(smartCaptureRecoverRoute){
+      if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      return json(await reconcileStaleSmartCaptureImports(db,actor,
+       z.uuid().parse(smartCaptureRecoverRoute[1]),env));
+    }
     const smartCaptureEnqueueRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\/([0-9a-f-]+)\/enqueue$/i);
     if(smartCaptureEnqueueRoute){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
