@@ -131,3 +131,20 @@ Never run these scripts against the existing preview or production branch withou
 Neon project `noisy-pond-49029240`, test branch `br-proud-union-zaded8kk` (`smart-capture-sc018-synthetic-isolated`) was created from synthetic preview parent `br-gentle-lab-zab9t10k` on 2026-10-27. Initial read-only query: database `vectra_preview`, owner role `vectra_preview_owner`, 0 existing Smart Capture tables, 2 project rows. **No migrations were applied.** This branch is not production and is not the preview default.
 
 Before any migration is applied, review all SC draft migrations in dependency order, validate referenced foreign keys, RLS policy coverage and role grants, and obtain explicit approval for applying them to this isolated branch. Test with synthetic actors only. Do not attach Google Drive credentials or process real PDFs.
+
+## SC-020/021 — isolated database integration results (27 October 2026)
+
+**Environment:** Neon preview project `noisy-pond-49029240`, *separate non-default isolated test branch* `br-proud-union-zaded8kk`. Existing preview branch and production were untouched. Test-specific `SET ROLE emalahleni_worker` permission was enabled **on this isolated branch only**; never apply that grant to shared or production environments. All synthetic transaction scenarios used savepoints and rollback. Two synthetic sources and imports remain as inert fixtures.
+
+The four ordered draft schema migrations (SC-003 queue, SC-004 discovery policy, SC-007 proposals, SC-017 attempt fencing) were successfully applied to this isolated branch on 27 October 2026. The SC-020 import transition guard and SC-021 proposal write guard draft migrations were then applied **only there**. This does not authorise or constitute production deployment.
+
+Verified with the actual restricted `emalahleni_worker` role:
+- Project A manager sees one Project A import and no Project B imports; Project B manager sees the converse
+- Project A auditor can read its project, but its direct write returns zero rows
+- Inactive manager and unaffiliated actor see zero imports; Project B manager cannot update Project A import
+- Before SC-020, an authorised manager could improperly jump `DISCOVERED → REJECTED`; after SC-020 PostgreSQL rejected that update
+- Legitimate `DISCOVERED → FETCHING → QUARANTINED → SCANNING → REJECTED` and claim release succeeded
+- Following synthetic `FAILED → DISCOVERED → FETCHING`, an attempt using the old claim token updated zero rows while the new token remained current
+- Before extraction, a direct proposal INSERT was rejected; legitimate `EXTRACTING` proposal creation and `NEEDS_REVIEW` revision-1 update succeeded
+
+A role-matrix and state-machine integration test has therefore been performed, but **this is not a production security clearance**. The server continues to use broad project-writer UPDATE grants; token and state triggers are defence-in-depth, not a substitute for dedicated, audited server-only transition functions. Other outstanding release gates include negative proposal UPDATE tests, cross-project insert attempts, atomic confirmation race testing, storage/orphan recovery, real queue integration, runtime secrets and privacy/security approval. No real beneficiary PDFs were processed.
