@@ -13,10 +13,13 @@ import {probeDocumentService,DocumentServiceCheckError} from './document-service
 import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
+import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-capture-api';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
   NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
+  SMART_CAPTURE_ENABLED?: string; SMART_CAPTURE_DRIVE_CLIENT_EMAIL?: string;
+  SMART_CAPTURE_DRIVE_PRIVATE_KEY?: string; SMART_CAPTURE_DRIVE_SOURCES_JSON?: string;
 }
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
@@ -90,6 +93,19 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     if (path === '/api/projects' && request.method === 'GET') {
       const [rows] = await db.forActor(actor, [{ query: 'SELECT p.id,p.code,p.name,m.role FROM public.projects p JOIN public.project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 AND m.active ORDER BY p.name', params: [actor] }]);
       return json({ projects: rows });
+    }
+    // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/(imports|sources)(?:\\/([0-9a-f-]+)\\/sync)?$/i);
+    if(smartCaptureRoute){
+      if(env.SMART_CAPTURE_ENABLED!=='true')throw new HttpError(503,'SMART_CAPTURE_NOT_ENABLED');
+      const project=z.uuid().parse(smartCaptureRoute[1]);
+      if(smartCaptureRoute[2]==='imports'&&!smartCaptureRoute[3]&&request.method==='GET')
+        return json(await smartCaptureList(db,actor,project));
+      if(smartCaptureRoute[2]==='sources'&&!smartCaptureRoute[3]&&request.method==='GET')
+        return json(await smartCaptureSources(db,actor,project));
+      if(smartCaptureRoute[2]==='sources'&&smartCaptureRoute[3]&&request.method==='POST')
+        return json(await smartCaptureSync(db,actor,project,smartCaptureRoute[3],env));
+      throw new HttpError(405,'METHOD_NOT_ALLOWED');
     }
     const dashboardRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
     if(dashboardRoute){
