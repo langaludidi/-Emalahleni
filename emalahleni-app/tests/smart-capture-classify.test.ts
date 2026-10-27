@@ -25,9 +25,10 @@ test('SC-011 no page text is never interpreted as a verified document',()=>{
 
 test('SC-I04 inconsistent OCR page numbering fails closed rather than inventing evidence page ranges',()=>{
  const text='Affidavit commissioner of oaths Affidavit commissioner of oaths';
+ const split='Affidavit commissioner of oaths'.length;
  const sections=classifyDocumentPages({text,pages:[
-  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:0,endIndex:30}]}}},
-  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:30,endIndex:62}]}}}
+  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:0,endIndex:split}]}}},
+  {pageNumber:1,layout:{textAnchor:{textSegments:[{startIndex:split,endIndex:text.length}]}}}
  ]});
  assert.deepEqual(sections,[
   {type:'AFFIDAVIT',fromPage:1,toPage:1,status:'DETECTED'},
