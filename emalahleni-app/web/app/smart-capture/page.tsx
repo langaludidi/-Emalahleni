@@ -33,11 +33,12 @@ export default function SmartCapturePage(){
  const [busy,setBusy]=useState(false);
  const [featureDisabled,setFeatureDisabled]=useState(false);
  const [lastSync,setLastSync]=useState('');
- async function request<T>(url:string,method='GET'):Promise<T>{
+ const [nextPageToken,setNextPageToken]=useState<string|null>(null);
+ async function request<T>(url:string,method='GET',payload?:unknown):Promise<T>{
   const tokenResult=await auth.token({fetchOptions:{headers:{'X-Force-Fetch':'true'}}});
   const token=tokenResult.data?.token;
   if(tokenResult.error||!token||token.split('.').length!==3)throw new Error('Sign in again to continue.');
-  const res=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}});
+  const res=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(payload===undefined?{}:{body:JSON.stringify(payload)})});
   const data=await res.json() as T&{error?:string};
   if(!res.ok)throw new Error(data.error||'Request failed');
   return data;
@@ -59,7 +60,7 @@ export default function SmartCapturePage(){
  useEffect(()=>{
   if(!projectId)return;
   let active=true;
-  setSources([]);setSourceId('');setImports([]);setFeatureDisabled(false);setError('');
+  setSources([]);setSourceId('');setImports([]);setFeatureDisabled(false);setError('');setNextPageToken(null);
   const root=`/api/projects/${projectId}/smart-capture`;
   Promise.all([request<{sources:Source[]}>(root+'/sources'),request<{imports:ImportRow[]}>(root+'/imports')])
   .then(([sourceData,importData])=>{
@@ -85,8 +86,9 @@ export default function SmartCapturePage(){
   if(!projectId||!sourceId||busy)return;
   setBusy(true);setError('');setLastSync('');
   try{
-   const result=await request<{discovered:number;newImports:number;hasMore:boolean}>(`/api/projects/${projectId}/smart-capture/sources/${sourceId}/sync`,'POST');
-   setLastSync(`Found ${result.discovered} PDFs; ${result.newImports} new import entries.${result.hasMore?' More files remain for a later synchronisation.':''}`);
+   const result=await request<{discovered:number;newImports:number;hasMore:boolean;nextPageToken:string|null}>(`/api/projects/${projectId}/smart-capture/sources/${sourceId}/sync`,'POST',{pageToken:nextPageToken});
+   setNextPageToken(result.nextPageToken);
+   setLastSync(`Found ${result.discovered} PDFs in this batch; ${result.newImports} new import entries.${result.hasMore?' Select Continue synchronisation to load the next batch.':''}`);
    const current=await request<{imports:ImportRow[]}>(`/api/projects/${projectId}/smart-capture/imports`);
    setImports(current.imports);
   }catch(e){setError(e instanceof Error?e.message:'Sync failed');}
@@ -110,8 +112,8 @@ export default function SmartCapturePage(){
    <>
     <section className={styles.controls} aria-label="Project and document source">
      <label>Project<select value={projectId} onChange={e=>setProjectId(e.target.value)}>{projects.map(p=><option value={p.id} key={p.id}>{p.name} ({p.code})</option>)}</select></label>
-     <label>Google Drive source<select value={sourceId} onChange={e=>setSourceId(e.target.value)} disabled={!sources.length}>{!sources.length&&<option value="">No configured sources</option>}{sources.map(s=><option key={s.id} value={s.id} disabled={!s.enabled}>{s.label}{!s.enabled?' (disabled)':''}</option>)}</select></label>
-     <button type="button" disabled={busy||!sourceId||featureDisabled||!captureRoles.has(activeProject?.role??'')} onClick={sync}>{busy?'Working…':'Synchronise Drive'}</button>
+     <label>Google Drive source<select value={sourceId} onChange={e=>{setSourceId(e.target.value);setNextPageToken(null);}} disabled={!sources.length}>{!sources.length&&<option value="">No configured sources</option>}{sources.map(s=><option key={s.id} value={s.id} disabled={!s.enabled}>{s.label}{!s.enabled?' (disabled)':''}</option>)}</select></label>
+     <button type="button" disabled={busy||!sourceId||featureDisabled||!captureRoles.has(activeProject?.role??'')} onClick={sync}>{busy?'Working…':nextPageToken?'Continue synchronisation':'Synchronise Drive'}</button>
     </section>
     {featureDisabled&&<div className={styles.notice} role="status"><strong>Smart Capture is not activated.</strong> The feature requires approved database migrations, Google Drive credentials and a separate real-data security review. Existing VectraSA capture remains available.</div>}
     {error&&<div className={styles.failure} role="alert">{error}</div>}
