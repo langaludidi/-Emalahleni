@@ -125,3 +125,9 @@ The read-only SQL checks in `migrations/20261027_smart_capture_security_prefligh
 The checks are **necessary but not sufficient**: an authorised reviewer must test two actors from different projects, an inactive membership, a viewer, and an authorised writer against INSERT/UPDATE/SELECT, including direct SQL attempts to bypass HTTP handlers. Review `sc_imports_update` and `sc_proposals_update` carefully: broad project-writer UPDATE policies do not themselves enforce legal state transitions or claim ownership. Those invariants currently rely on server SQL predicates, so a dedicated audited transition-function design remains a production security gate.
 
 Never run these scripts against the existing preview or production branch without explicit environment confirmation. No migrations have been applied as part of this handoff.
+
+## SC-019 — isolated Neon test branch created
+
+Neon project `noisy-pond-49029240`, test branch `br-proud-union-zaded8kk` (`smart-capture-sc018-synthetic-isolated`) was created from synthetic preview parent `br-gentle-lab-zab9t10k` on 2026-10-27. Initial read-only query: database `vectra_preview`, owner role `vectra_preview_owner`, 0 existing Smart Capture tables, 2 project rows. **No migrations were applied.** This branch is not production and is not the preview default.
+
+Before any migration is applied, review all SC draft migrations in dependency order, validate referenced foreign keys, RLS policy coverage and role grants, and obtain explicit approval for applying them to this isolated branch. Test with synthetic actors only. Do not attach Google Drive credentials or process real PDFs.
