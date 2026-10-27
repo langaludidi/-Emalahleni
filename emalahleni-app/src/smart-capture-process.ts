@@ -59,15 +59,28 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
     AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER'))
    AND EXISTS (SELECT 1 FROM public.smart_capture_sources s
     WHERE s.project_id=i.project_id AND s.id=i.source_id AND s.enabled)
-  RETURNING i.source_id,i.provider_file_id,i.source_version,i.content_size_bytes`,
+  RETURNING i.source_id,i.provider_folder_id,i.provider_file_id,i.source_version,i.content_size_bytes`,
   params:[project,id,actor]}]);
  if(!claimed.length)throw new HttpError(409,'SMART_CAPTURE_CLAIM_DENIED');
- const item=claimed[0] as {source_id:string;provider_file_id:string;source_version:string;content_size_bytes:number|string};
+ const item=claimed[0] as {source_id:string;provider_folder_id:string;provider_file_id:string;source_version:string;content_size_bytes:number|string};
  let stage='FETCHING',errorCode='SMART_CAPTURE_PROCESSING_FAILED';
  try{
   const folder=approvedFolder(env,item.source_id);
   const driveToken=await googleServiceToken(env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,
    env.SMART_CAPTURE_DRIVE_PRIVATE_KEY,'https://www.googleapis.com/auth/drive.readonly');
+  // The imported file must remain in its own beneficiary folder, which must
+  // still be an immediate child of the approved source root.
+  const folderUrl=new URL('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(item.provider_folder_id));
+  folderUrl.searchParams.set('fields','id,parents,mimeType,trashed');
+  folderUrl.searchParams.set('supportsAllDrives','true');
+  const folderResponse=await fetch(folderUrl,{headers:{Authorization:`Bearer ${driveToken}`},signal:AbortSignal.timeout(15_000)});
+  if(!folderResponse.ok){errorCode='DRIVE_BENEFICIARY_FOLDER_UNAVAILABLE';throw Error(errorCode);}
+  const folderInfo=z.object({id:z.string(),parents:z.array(z.string()),
+   mimeType:z.literal('application/vnd.google-apps.folder'),trashed:z.boolean().optional()}).safeParse(await folderResponse.json());
+  if(!folderInfo.success||folderInfo.data.id!==item.provider_folder_id||
+   !folderInfo.data.parents.includes(folder)||folderInfo.data.trashed===true){
+   errorCode='DRIVE_BENEFICIARY_FOLDER_MISMATCH';throw Error(errorCode);
+  }
   // Verify file metadata again at processing time, not just when discovered.
   const metaUrl=new URL('https://www.googleapis.com/drive/v3/files/'+encodeURIComponent(item.provider_file_id));
   metaUrl.searchParams.set('fields','id,parents,mimeType,size,version,modifiedTime,md5Checksum');
@@ -76,7 +89,7 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
   const metaResponse=await fetch(metaUrl,{headers:getHeaders,signal:AbortSignal.timeout(15_000)});
   if(!metaResponse.ok){errorCode='DRIVE_FILE_UNAVAILABLE';throw Error(errorCode);}
   const meta=fileMetadata.safeParse(await metaResponse.json());
-  if(!meta.success||meta.data.id!==item.provider_file_id||!meta.data.parents.includes(folder)){
+  if(!meta.success||meta.data.id!==item.provider_file_id||!meta.data.parents.includes(item.provider_folder_id)){
    errorCode='DRIVE_SOURCE_MISMATCH';throw Error(errorCode);
   }
   if(Number(meta.data.size)<=0||Number(meta.data.size)>MAX_PDF){
