@@ -103,8 +103,10 @@ return async function handle(request: Request, env: Env): Promise<Response> {
         return json(await smartCaptureList(db,actor,project));
       if(smartCaptureRoute[2]==='sources'&&!smartCaptureRoute[3]&&request.method==='GET')
         return json(await smartCaptureSources(db,actor,project));
-      if(smartCaptureRoute[2]==='sources'&&smartCaptureRoute[3]&&request.method==='POST')
-        return json(await smartCaptureSync(db,actor,project,smartCaptureRoute[3],env));
+      if(smartCaptureRoute[2]==='sources'&&smartCaptureRoute[3]&&request.method==='POST'){
+        const requestBody=z.object({pageToken:z.string().max(1024).nullable().optional()}).strict().parse(await body(request));
+        return json(await smartCaptureSync(db,actor,project,smartCaptureRoute[3],env,requestBody.pageToken??null));
+      }
       throw new HttpError(405,'METHOD_NOT_ALLOWED');
     }
     const dashboardRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
