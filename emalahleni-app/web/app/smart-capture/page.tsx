@@ -93,6 +93,17 @@ export default function SmartCapturePage(){
   }catch(e){setError(e instanceof Error?e.message:'Processing unavailable');}
   finally{setBusy(false);}
  }
+ async function retrySingle(importId:string){
+  if(!projectId||busy)return;
+  setBusy(true);setError('');setLastSync('');
+  try{
+   await request(`/api/projects/${projectId}/smart-capture/imports/${importId}/retry`,'POST');
+   setLastSync('Transient failure reset. Select Process PDF to retry; no automatic retry has started.');
+   const current=await request<{imports:ImportRow[]}>(`/api/projects/${projectId}/smart-capture/imports`);
+   setImports(current.imports);
+  }catch(e){setError(e instanceof Error?e.message:'Retry was not permitted');}
+  finally{setBusy(false);}
+ }
  async function sync(){
   if(!projectId||!sourceId||busy)return;
   setBusy(true);setError('');setLastSync('');
@@ -134,7 +145,7 @@ export default function SmartCapturePage(){
     </section>
     <section className={styles.card}>
      <div className={styles.cardHeader}><div><h2>Import queue</h2><p>Showing up to 50 recent project-scoped import entries. Full project totals require paginated reporting.</p></div><button className={styles.secondary} disabled={busy||featureDisabled} onClick={refresh}>Refresh</button></div>
-     <div className={styles.tablewrap}><table><thead><tr><th>Import</th><th>Status</th><th>Attempts</th><th>Application</th><th>Exception</th><th>Action</th></tr></thead><tbody>{imports.map(item=><tr key={item.id}><td><code>{item.id.slice(0,8)}…</code></td><td><span className={`${styles.status} ${statusTone(item.state)}`}>{statusLabels[item.state]??item.state}</span></td><td>{item.attemptCount}</td><td>{item.applicationId?<a href="/">View in VectraSA</a>:'—'}</td><td>{item.errorCode??'—'}</td><td>{item.state==='DISCOVERED'&&captureRoles.has(activeProject?.role??'')?<button className={styles.secondary} disabled={busy} onClick={()=>processSingle(item.id)}>Process PDF</button>:item.state==='NEEDS_REVIEW'?<a href={`/smart-capture/review/?project=${projectId}&import=${item.id}`}>Verify application →</a>:'—'}</td></tr>)}{!imports.length&&<tr><td colSpan={6} className={styles.empty}>No import entries are available for this project. The queue will appear here after an authorised source synchronisation.</td></tr>}</tbody></table></div>
+     <div className={styles.tablewrap}><table><thead><tr><th>Import</th><th>Status</th><th>Attempts</th><th>Application</th><th>Exception</th><th>Action</th></tr></thead><tbody>{imports.map(item=><tr key={item.id}><td><code>{item.id.slice(0,8)}…</code></td><td><span className={`${styles.status} ${statusTone(item.state)}`}>{statusLabels[item.state]??item.state}</span></td><td>{item.attemptCount}</td><td>{item.applicationId?<a href="/">View in VectraSA</a>:'—'}</td><td>{item.errorCode??'—'}</td><td>{item.state==='DISCOVERED'&&captureRoles.has(activeProject?.role??'')?<button className={styles.secondary} disabled={busy} onClick={()=>processSingle(item.id)}>Process PDF</button>:item.state==='NEEDS_REVIEW'?<a href={`/smart-capture/review/?project=${projectId}&import=${item.id}`}>Verify application →</a>:item.state==='FAILED'&&item.attemptCount<3?<button className={styles.secondary} disabled={busy} onClick={()=>retrySingle(item.id)}>Retry eligible failure</button>:'—'}</td></tr>)}{!imports.length&&<tr><td colSpan={6} className={styles.empty}>No import entries are available for this project. The queue will appear here after an authorised source synchronisation.</td></tr>}</tbody></table></div>
     </section>
     <p className={styles.footnote}>Smart Capture does not automatically approve applications, evidence or DoHS sections. Source documents are private. The current repository remains restricted to synthetic-data development until release gates are closed.</p>
    </>}
