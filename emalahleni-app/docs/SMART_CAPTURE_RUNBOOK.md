@@ -178,3 +178,9 @@ Processing now stores each quarantined PDF under `smart-capture/quarantine/<proj
 ## SC-025 — HTTP route repair
 
 The single-import `POST /api/projects/:projectId/smart-capture/imports/:importId/process` and approved-source `POST /api/projects/:projectId/smart-capture/sources/:sourceId/sync` patterns were normalised to use valid regex literal slash escapes. The existing route test now guards both expressions against malformed duplicated backslashes. This change is on the draft GitHub branch only.
+
+## SC-026 — private quarantine orphan inventory (draft branch only)
+
+Added `src/smart-capture-orphans.ts` with an explicitly **read-only** bounded R2 listing. It requires an active ADMIN/MANAGER project membership, feature flags, and the private R2 binding; lists at most 100 object keys for that project; compares them to project-scoped import `storage_key` references; and returns only aggregate counts (`retained`, `orphanCandidates`, `invalid`, `truncated`). No PDF contents or object keys are returned and no deletion is performed. Synthetic tests exercise a retained object, a stale attempt-specific object, a malformed key, and an unauthorised actor.
+
+The inventory is not exposed through an HTTP route and is not enabled. Before a purge can be implemented, establish retention and legal-hold policy, a minimum orphan age, bounded pagination, an active-worker safety window, an operator approval path, and a two-step dry-run/delete audit trail. An object missing from the current DB reference is a **candidate**, not proof that it can be deleted.
