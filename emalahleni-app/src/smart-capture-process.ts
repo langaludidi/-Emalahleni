@@ -11,6 +11,7 @@ import {digest,validSignature} from './evidence';
 import {approvedFolder,googleServiceToken,type ServiceEnv} from './smart-capture-api';
 import {processScannedPdfWithDocumentAi} from './smart-capture-document-ai';
 import {sealSmartCaptureProposal} from './smart-capture-crypto';
+import {smartCaptureQuarantineKey} from './smart-capture-storage';
 
 export interface ProcessingEnv extends ServiceEnv {
  SMART_CAPTURE_PROCESSING_ENABLED?:string;
@@ -59,6 +60,7 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
  const project=z.string().uuid().parse(projectId),id=z.string().uuid().parse(importId);
  // Atomic compare-and-set claim; two concurrent requests cannot claim a single DISCOVERED item.
  const claimToken=crypto.randomUUID();
+ const storageKey=smartCaptureQuarantineKey(project,id,claimToken);
  const [claimed]=await db.forActor(actor,[{query:`
   UPDATE public.smart_capture_imports i SET
    state='FETCHING',claimed_at=now(),claimed_by=$3,claim_token=$4,attempt_count=attempt_count+1,updated_at=now()
@@ -120,7 +122,6 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    errorCode='PDF_INTEGRITY_MISMATCH';throw Error(errorCode);
   }
   const hash=await digest(pdf);
-  const storageKey=`smart-capture/quarantine/${project}/${id}/original.pdf`;
   await env.EVIDENCE_BUCKET.put(storageKey,pdf,{httpMetadata:{contentType:'application/pdf'}});
   await updateState(db,actor,project,id,stage,'QUARANTINED',claimToken,hash,storageKey);stage='QUARANTINED';
   await updateState(db,actor,project,id,stage,'SCANNING',claimToken);stage='SCANNING';
@@ -177,6 +178,8 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    'DOCUMENT_AI_RESPONSE_INVALID','DOCUMENT_AI_RESPONSE_TOO_LARGE',
    'DOCUMENT_AI_PDF_SIZE','DOCUMENT_AI_PDF_INVALID',
   ].includes(cause.message))errorCode=cause.message;
+  // A failed/stale attempt owns only its private key; never delete a newer attempt's PDF.
+  try{await env.EVIDENCE_BUCKET.delete(storageKey);}catch{}
   try{await markFailed(db,actor,project,id,errorCode,claimToken);}catch{}
   throw new HttpError(503,errorCode);
  }
