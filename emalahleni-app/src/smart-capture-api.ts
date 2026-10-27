@@ -22,7 +22,6 @@ const listRow=z.object({
  id:z.string().uuid(),state:z.string(),application_id:z.string().uuid().nullable(),
  attempt_count:z.number().int(),error_code:z.string().nullable(),
 });
-const MAX_PAGES = 30;
 
 async function serviceAccountToken(env:ServiceEnv):Promise<string>{
  const email=env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,secret=env.SMART_CAPTURE_DRIVE_PRIVATE_KEY;
@@ -84,7 +83,7 @@ export async function smartCaptureList(db:Database,actor:string,projectId:string
  })};
 }
 
-export async function smartCaptureSync(db:Database,actor:string,projectId:string,sourceId:string,env:ServiceEnv){
+export async function smartCaptureSync(db:Database,actor:string,projectId:string,sourceId:string,env:ServiceEnv,pageToken:string|null=null){
  if(env.SMART_CAPTURE_ENABLED!=='true')throw new HttpError(503,'SMART_CAPTURE_NOT_ENABLED');
  const project=z.string().uuid().parse(projectId),source=z.string().uuid().parse(sourceId);
  const [membership,registered]=await db.forActor(actor,[
@@ -95,28 +94,25 @@ export async function smartCaptureSync(db:Database,actor:string,projectId:string
  if(!registered.length)throw new HttpError(404,'SMART_CAPTURE_SOURCE_UNAVAILABLE');
  const folder=approvedFolder(env,source);
  const token=await serviceAccountToken(env);
- let page:string|null=null, pages=0,discovered=0,newRows=0;
- // One request is bounded by count. Later pages require durable cursor/queue workflow.
- do {
-  const result=await listBeneficiaryPdfs({approvedFolderId:folder,accessToken:token,pageToken:page});
-  if(result.files.length){
-   const identifiers=result.files.map(file=>({
-    id:file.providerFileId,version:discoveryVersion(file),size:file.sizeBytes
-   }));
-   for(const file of identifiers){
-    const [rows]=await db.forActor(actor,[{
-     query:`INSERT INTO public.smart_capture_imports
-      (project_id,source_id,provider_file_id,source_version,content_size_bytes,state)
-      VALUES ($1,$2,$3,$4,$5,'DISCOVERED')
-      ON CONFLICT (project_id,source_id,provider_file_id,source_version) DO NOTHING RETURNING id`,
-     params:[project,source,file.id,file.version,file.size]
-    }]);
-    newRows+=rows.length;
-   }
-   discovered+=result.files.length;
-  }
-  page=result.nextPageToken;
-  pages++;
- }while(page&&pages<MAX_PAGES);
- return {discovered,newImports:newRows,hasMore:!!page,processedPages:pages};
+ const result=await listBeneficiaryPdfs({approvedFolderId:folder,accessToken:token,pageToken});
+ const identifiers=result.files.map(file=>({
+  id:file.providerFileId,version:discoveryVersion(file),size:file.sizeBytes
+ }));
+ let newRows=0;
+ if(identifiers.length){
+  const [rows]=await db.forActor(actor,[{
+   // Insert one bounded page in one transaction, rather than N HTTP transactions.
+   query:`INSERT INTO public.smart_capture_imports
+    (project_id,source_id,provider_file_id,source_version,content_size_bytes,state)
+    SELECT $1::uuid,$2::uuid,f.id,f.version,f.size,'DISCOVERED'
+    FROM jsonb_to_recordset($3::jsonb) AS f(id text,version text,size bigint)
+    ON CONFLICT (project_id,source_id,provider_file_id,source_version) DO NOTHING
+    RETURNING id`,
+   params:[project,source,JSON.stringify(identifiers)]
+  }]);
+  newRows=rows.length;
+ }
+ return {discovered:identifiers.length,newImports:newRows,
+   hasMore:result.nextPageToken!==null,nextPageToken:result.nextPageToken};
+
 }
