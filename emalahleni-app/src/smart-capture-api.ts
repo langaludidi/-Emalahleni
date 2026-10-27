@@ -56,6 +56,17 @@ function approvedFolder(env:ServiceEnv,sourceId:string):string{
  return folder;
 }
 
+
+export async function smartCaptureSources(db:Database,actor:string,projectId:string){
+ const project=z.string().uuid().parse(projectId);
+ const [membership,sources]=await db.forActor(actor,[
+  {query:'SELECT role FROM public.project_memberships WHERE project_id=$1 AND user_id=$2 AND active',params:[project,actor]},
+  {query:'SELECT id,label,enabled FROM public.smart_capture_sources WHERE project_id=$1 ORDER BY label LIMIT 100',params:[project]},
+ ],true);
+ if(!membership.length)throw new HttpError(403,'PROJECT_ACCESS_DENIED');
+ return {sources:sources.map(row=>({id:String(row.id),label:String(row.label),enabled:row.enabled===true}))};
+}
+
 export async function smartCaptureList(db:Database,actor:string,projectId:string,limit=50){
  const project=z.string().uuid().parse(projectId);
  const number=Math.max(1,Math.min(100,limit));
