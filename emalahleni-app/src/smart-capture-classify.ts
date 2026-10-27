@@ -27,9 +27,15 @@ function textForPage(text:string,page:Page):string{
 export function classifyDocumentPages(document:Doc):ExtractionProposal['sections']{
  if(!document||typeof document.text!=='string'||!Array.isArray(document.pages))return [];
  const result:ExtractionProposal['sections']=[];
+ // A malformed or reordered page number must not merge unrelated supporting
+ // documents into a misleading page range. Treat its slot as unknown instead.
  for(let index=0;index<Math.min(200,document.pages.length);index++){
-  const page=document.pages[index],number=page.pageNumber??index+1;
-  if(!Number.isSafeInteger(number)||number<1||number>2000)continue;
+  const page=document.pages[index],number=index+1;
+  const trustworthyNumber=page.pageNumber===undefined||page.pageNumber===number;
+  if(!trustworthyNumber){
+   result.push({type:'UNKNOWN',fromPage:number,toPage:number,status:'NOT_FOUND'});
+   continue;
+  }
   const text=textForPage(document.text,page).toLowerCase();
   const candidates=rules.map(rule=>({kind:rule.kind,score:rule.tokens.reduce((n,t)=>n+Number(t.test(text)),0)}))
    .filter(v=>v.score>0).sort((a,b)=>b.score-a.score);
