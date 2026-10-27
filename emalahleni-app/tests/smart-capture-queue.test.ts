@@ -26,3 +26,35 @@ test('SC-014 disabled consumer requests delayed retry rather than dropping jobs'
  await consumeSmartCaptureBatch(batch,{} as ProcessingEnv);
  assert.equal(retried,1);assert.equal(acked,0);
 });
+
+test('SC-027 enabled consumer acknowledges successful synthetic processing',async()=>{
+ let acked=0,retried=0,processed=0;
+ const batch={messages:[{
+  body:{schema:1,projectId:project,importId:id,actorId:'synthetic'},
+  ack:()=>{acked++;},retry:()=>{retried++;}
+ }]} as never;
+ await consumeSmartCaptureBatch(batch,{
+  SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+ } as never,async()=>{processed++;return {state:'NEEDS_REVIEW'} as never;});
+ assert.equal(processed,1);assert.equal(acked,1);assert.equal(retried,0);
+});
+test('SC-027 malformed queue messages never invoke the processor',async()=>{
+ let processed=0,acked=0;
+ const batch={messages:[{body:{schema:1,projectId:project,importId:id,actorId:'synthetic',pdf:'secret'},ack:()=>{acked++;}}]} as never;
+ await consumeSmartCaptureBatch(batch,{
+  SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+ } as never,async()=>{processed++;return {} as never;});
+ assert.equal(processed,0);assert.equal(acked,1);
+});
+test('SC-027 duplicate atomic-claim denials are acknowledged, not replayed',async()=>{
+ let acked=0,retried=0;
+ const batch={messages:[{body:{schema:1,projectId:project,importId:id,actorId:'synthetic'},
+  ack:()=>{acked++;},retry:()=>{retried++;}}]} as never;
+ await consumeSmartCaptureBatch(batch,{
+  SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+  SMART_CAPTURE_QUEUE_ENABLED:'true',DATABASE_URL:'synthetic-connection'
+ } as never,async()=>{throw Object.assign(new Error('duplicate'),{code:'SMART_CAPTURE_CLAIM_DENIED'});});
+ assert.equal(acked,1);assert.equal(retried,0);
+});
