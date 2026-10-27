@@ -28,3 +28,4 @@ import './smart-capture-state-guard.test.ts';
 import './smart-capture-proposal-guard.test.ts';
 import './smart-capture-commit-parity.test.ts';
 import './smart-capture-storage.test.ts';
+import './smart-capture-orphans.test.ts';
