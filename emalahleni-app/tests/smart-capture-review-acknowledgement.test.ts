@@ -12,3 +12,9 @@ test('SC-I05 saving a revised proposal clears stale field approvals before draft
  assert.match(code,/async function save\(\)[\s\S]*?setChecked\(\[\]\)/);
  assert.match(code,/async function confirm\(\)[\s\S]*?JSON\.stringify\(data\.proposal\)!==JSON\.stringify\(proposal\)/);
 });
+
+test('SC-I05 switching imports clears previous beneficiary PDF, data and approvals',()=>{
+ const code=readFileSync(new URL('../web/app/smart-capture/review/page.tsx',import.meta.url),'utf8');
+ assert.match(code,/useEffect\(\(\)=>\{[\s\S]*?setData\(null\);setProposal\(null\);setChecked\(\[\]\);setPdfUrl\(''\);setPage\(1\)/);
+ assert.match(code,/return\(\)=>\{live=false;if\(blobUrl\)URL\.revokeObjectURL\(blobUrl\)/);
+});
