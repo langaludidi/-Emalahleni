@@ -36,3 +36,26 @@ test('SC-I04 rejects a PDF falsely reported under another beneficiary folder',as
    mimeType:'application/pdf',size:'27213',modifiedTime:'2026-10-27T19:18:49.794Z'}]})
  }),/DRIVE_RESPONSE_INVALID/);
 });
+
+test('SC-I04 rejects an unapproved child folder returned by the provider',async()=>{
+ await assert.rejects(listBeneficiaryFolders({rootFolderId:ROOT,accessToken:'synthetic-token',
+  fetcher:async()=>Response.json({files:[{id:CHILD,name:'SYNTHETIC-APPLICANT-001',
+   parents:['1notTheApprovedParent'],mimeType:'application/vnd.google-apps.folder',trashed:false}]})
+ }),/DRIVE_RESPONSE_INVALID/);
+});
+
+test('SC-I04 discovery never downloads PDF bytes',async()=>{
+ const methods:string[]=[];
+ const fetcher=async(request:Request)=>{
+  methods.push(request.method);
+  const q=new URL(request.url).searchParams.get('q')??'';
+  return Response.json({files:q.includes('google-apps.folder')?[{
+   id:CHILD,name:'SYNTHETIC-APPLICANT-001',parents:[ROOT],
+   mimeType:'application/vnd.google-apps.folder',trashed:false
+  }]:[{id:FILE,name:'synthetic.pdf',parents:[CHILD],mimeType:'application/pdf',
+   size:'27213',modifiedTime:'2026-10-27T19:18:49.794Z'}]});
+ };
+ await listBeneficiaryFolders({rootFolderId:ROOT,accessToken:'synthetic-token',fetcher});
+ await listBeneficiaryPdfs({approvedFolderId:CHILD,accessToken:'synthetic-token',fetcher});
+ assert.deepEqual(methods,['GET','GET']);
+});
