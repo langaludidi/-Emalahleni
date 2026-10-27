@@ -1,0 +1,25 @@
+{
+  // SC-028: ISOLATED TEST-ONLY queue configuration fragment.
+  // NOT a deployable Worker config. Do not merge into staging wrangler.jsonc
+  // until separate Cloudflare queues and a dead-letter queue are provisioned.
+  "queues": {
+    "producers": [
+      {"binding": "SMART_CAPTURE_QUEUE", "queue": "vectra-smart-capture-synthetic-test"}
+    ],
+    "consumers": [
+      {
+        "queue": "vectra-smart-capture-synthetic-test",
+        "dead_letter_queue": "vectra-smart-capture-synthetic-test-dlq",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "vars": {
+    "SMART_CAPTURE_ENABLED": "false",
+    "SMART_CAPTURE_PROCESSING_ENABLED": "false",
+    "SMART_CAPTURE_QUEUE_ENABLED": "false"
+  }
+}
