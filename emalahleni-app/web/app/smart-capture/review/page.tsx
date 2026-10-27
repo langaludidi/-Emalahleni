@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {createAuthClient} from '@neondatabase/auth';
-import type {ExtractionProposal} from '../../../src/smart-capture-proposal';
+import type {ExtractionProposal} from '../../../../src/smart-capture-proposal';
 import styles from './review.module.css';
 
 const AUTH_URL='https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth';
