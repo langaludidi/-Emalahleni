@@ -14,12 +14,16 @@ import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
 import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-capture-api';
+import {processSmartCaptureImport} from './smart-capture-process';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
   NEON_AUTH_BASE_URL?: string; NEON_AUTH_JWKS_URL?: string; ENABLE_CASE_API?: string;
   SMART_CAPTURE_ENABLED?: string; SMART_CAPTURE_DRIVE_CLIENT_EMAIL?: string;
   SMART_CAPTURE_DRIVE_PRIVATE_KEY?: string; SMART_CAPTURE_DRIVE_SOURCES_JSON?: string;
+  SMART_CAPTURE_PROCESSING_ENABLED?: string;
+  SMART_CAPTURE_AI_CLIENT_EMAIL?: string; SMART_CAPTURE_AI_PRIVATE_KEY?: string;
+  SMART_CAPTURE_AI_PROCESSOR_NAME?: string; SMART_CAPTURE_ENCRYPTION_KEY?: string;
 }
 const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY' };
 const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
@@ -95,6 +99,14 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureProcessRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/process$/i);
+    if(smartCaptureProcessRoute){
+      if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      if(env.SMART_CAPTURE_ENABLED!=='true'||env.SMART_CAPTURE_PROCESSING_ENABLED!=='true')
+        throw new HttpError(503,'SMART_CAPTURE_PROCESSING_DISABLED');
+      return json(await processSmartCaptureImport(db,actor,
+       z.uuid().parse(smartCaptureProcessRoute[1]),z.uuid().parse(smartCaptureProcessRoute[2]),env));
+    }
     const smartCaptureRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/(imports|sources)(?:\\/([0-9a-f-]+)\\/sync)?$/i);
     if(smartCaptureRoute){
       if(env.SMART_CAPTURE_ENABLED!=='true')throw new HttpError(503,'SMART_CAPTURE_NOT_ENABLED');
