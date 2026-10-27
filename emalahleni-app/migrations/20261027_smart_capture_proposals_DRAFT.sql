@@ -1,6 +1,9 @@
 -- SC-007: encrypted extraction proposals and guarded capture transitions.
 -- DRAFT: requires prior Smart Capture queue migration and security review.
 BEGIN;
+-- Needed for composite FK from encrypted proposal to import identity.
+ALTER TABLE public.smart_capture_imports
+ ADD CONSTRAINT smart_capture_imports_project_id_id_key UNIQUE (project_id,id);
 CREATE TABLE public.smart_capture_proposals (
  import_id uuid PRIMARY KEY,
  project_id uuid NOT NULL,
