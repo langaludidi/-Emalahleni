@@ -7,7 +7,7 @@ Do not replace or rename its existing `DocumentScanner` Durable Object, R2 evide
 
 ## 1. What is implemented on the development branch
 
-- Read-only Google Drive PDF metadata discovery; approved-folder boundaries.
+- Read-only Google Drive metadata discovery for **individual beneficiary subfolders** of the approved source root, then PDFs inside each subfolder; parent-chain checks at processing time.
 - Project-scoped source and import-list API, one-page-per-sync indexing, unique revision identity.
 - Source/import/proposal table migrations (DRAFT only, not applied).
 - Guarded single-PDF processor: claim -> verify Drive folder/revision -> size/signature/hash -> private R2 quarantine -> existing ClamAV scan -> bounded EU Document AI -> isolated AES-GCM encrypted extraction proposal.
@@ -53,7 +53,7 @@ Source entries require authorised administrative provisioning, including project
 2. Verify existing capture, evidence, scanner, DoHS and dashboard tests unchanged.
 3. Confirm unsigned calls to Smart Capture endpoints return 401; flag disabled returns 503 after authentication.
 4. Seed only fictional project, officer, reader and source rows in isolated Neon.
-5. Discover same PDF twice -> one row; same file changed -> separate version.
+5. Discover beneficiary folders and their PDFs; same PDF twice -> one row; same file changed -> separate version; moving a file outside its approved beneficiary folder must block processing.
 6. Different project cannot read another source/import/proposal/PDF.
 7. Corrupt/infected PDFs never reach the AI provider. Scanner unavailable -> no proposal.
 8. Synthetically generated handwritten PDF: scan, AI output, encrypted proposal, field verification.
@@ -69,7 +69,7 @@ Source entries require authorised administrative provisioning, including project
 - **Current 5 MiB limit:** The existing ClamAV scanner supports up to 5 MiB; a combined application pack larger than that fails closed. Build a bounded larger-pack processing path before bulk import.
 - **Handwriting quality:** Do not assume Document AI model quality. Benchmark at least five *authorised* representative scans in an approved environment, using redacted/synthetic equivalents for dev when possible. Tune actual field labels against the approved form.
 - **PDF document segmentation:** Current normaliser extracts form fields; it does not yet reliably classify/page-split all supporting evidence. These documents must not be marked verified.
-- **Backlog throughput:** Current processing is one operator-triggered PDF per request, not durable Cloudflare Queue processing. Required before thousands of automated imports.
+- **Backlog throughput:** Current processing is one operator-triggered PDF per request, not durable Cloudflare Queue processing. Each beneficiary folder is scanned for at most 100 PDFs; folders with more than 100 PDFs fail closed pending paginated support. Required before thousands of automated imports.
 - **Legacy duplicates:** Source revision unique constraints prevent repeated file sync; beneficiary identity deduplication across separate files/existing historical cases is not complete.
 - **Site and dependant fields:** Site verification cannot be invented; existing app has at most two dependants.
 - **Backup/restore:** Neon database, R2 private files and BOTH encryption keys must be recoverable together.
