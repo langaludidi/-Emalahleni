@@ -1,0 +1,29 @@
+{
+  // SC-032: separate Worker, separate QUEUE, isolated branch only.
+  // Existing emalahleni-api-staging and vectra-smart-capture-test MUST NOT be changed.
+  "name": "vectra-smart-capture-neon-probe",
+  "account_id": "f887a522ca852a80491c2485853d4363",
+  "main": "src/smart-capture-synthetic-neon-worker.ts",
+  "compatibility_date": "2026-10-10",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {"enabled": true, "invocation_logs": false}
+  },
+  "queues": {
+    "consumers": [
+      {
+        "queue": "vectra-smart-capture-neon-probe-test",
+        "dead_letter_queue": "vectra-smart-capture-neon-probe-test-dlq",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "vars": {
+    "SYNTHETIC_NEON_PROBE_ENABLED": "false"
+  }
+}
