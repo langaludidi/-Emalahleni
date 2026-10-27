@@ -3,6 +3,7 @@
  * Only produces a review proposal. Never commits beneficiary records.
  */
 import { extractionProposalSchema, type ExtractionProposal } from './smart-capture-proposal';
+import {classifyDocumentPages} from './smart-capture-classify';
 
 type TextAnchor={textSegments?:Array<{startIndex?:string|number;endIndex?:string|number}>};
 type ProviderField={fieldName?:{textAnchor?:TextAnchor;confidence?:number};fieldValue?:{textAnchor?:TextAnchor;confidence?:number}};
@@ -88,7 +89,7 @@ export function normaliseDocumentAi(value:unknown):ExtractionProposal{
    applicant[key.slice('applicant.'.length)]=main.value;
   }else extraFields[key.slice(0,90)]=main.value;
  }
- return extractionProposalSchema.parse({version:1,applicant,household,extraFields,provenance,sections:[]});
+ return extractionProposalSchema.parse({version:1,applicant,household,extraFields,provenance,sections:classifyDocumentPages(doc)});
 }
 
 /** Client only: private scanning and real-data approval MUST occur before calling. */
