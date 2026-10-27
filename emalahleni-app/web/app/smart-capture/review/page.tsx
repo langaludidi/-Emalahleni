@@ -43,7 +43,7 @@ export default function SmartCaptureReview(){
  useEffect(()=>{
   if(!root)return;
   let live=true,blobUrl='';
-  setBusy(true);setError('');
+  setBusy(true);setError('');setSuccess('');setData(null);setProposal(null);setChecked([]);setPdfUrl('');setPage(1);
   (async()=>{
    try{
     const result=await call<Payload>(root+'/proposal');
