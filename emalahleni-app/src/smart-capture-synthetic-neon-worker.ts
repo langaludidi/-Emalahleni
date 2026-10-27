@@ -19,6 +19,7 @@ export function checkSyntheticDatabaseUrl(connection:string){
  const url=new URL(connection);
  if(!['postgres:','postgresql:'].includes(url.protocol)||
   decodeURIComponent(url.username)!=='vectra_sc_synthetic_limited'||
+  url.pathname!=='/vectra_preview'||
   !url.hostname.endsWith('.neon.tech')||
   url.searchParams.get('sslmode')!=='require')
   throw new Error('SYNTHETIC_PROBE_DATABASE_REJECTED');
