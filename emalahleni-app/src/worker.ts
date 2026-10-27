@@ -15,6 +15,7 @@ import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
 import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-capture-api';
 import {processSmartCaptureImport} from './smart-capture-process';
+import {retrySmartCaptureImport} from './smart-capture-retry';
 import {readSmartCaptureProposal,saveSmartCaptureProposal,confirmSmartCaptureProposal,downloadSmartCapturePdf} from './smart-capture-review';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
@@ -102,6 +103,12 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureRetryRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/retry$/i);
+    if(smartCaptureRetryRoute){
+      if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      return json(await retrySmartCaptureImport(db,actor,
+       z.uuid().parse(smartCaptureRetryRoute[1]),z.uuid().parse(smartCaptureRetryRoute[2]),env));
+    }
     const smartCaptureReviewRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/(proposal|confirm|pdf)$/i);
     if(smartCaptureReviewRoute){
       const project=z.uuid().parse(smartCaptureReviewRoute[1]);
