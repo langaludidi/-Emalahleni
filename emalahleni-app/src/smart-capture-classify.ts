@@ -4,7 +4,7 @@
  */
 import type {ExtractionProposal} from './smart-capture-proposal';
 
-type Page={pageNumber?:number;layout?:{textAnchor?:{textSegments?:Array<{startIndex?:string|number;endIndex?:string|number}>}}}};
+type Page={pageNumber?:number;layout?:{textAnchor?:{textSegments?:Array<{startIndex?:string|number;endIndex?:string|number}>}}};
 type Doc={text?:string;pages?:Page[]};
 type Kind=ExtractionProposal['sections'][number]['type'];
 const rules:ReadonlyArray<{kind:Kind;tokens:RegExp[]}>= [
