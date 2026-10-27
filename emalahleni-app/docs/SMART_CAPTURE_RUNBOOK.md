@@ -15,7 +15,7 @@ Do not replace or rename its existing `DocumentScanner` Durable Object, R2 evide
 - Next.js Smart Capture queue and side-by-side review interface.
 - Synthetic unit tests and architecture contracts.
 
-**Not provided:** large-PDF support (>5 MiB), durable background worker queue, automatic retries with leases, reliable full-project paginated reporting, completed supporting-document page segmentation, production-ready applicant PDF model mapping, initial workbook migration, real-data acceptance/backup, operational audit for every Smart Capture mutation, fully verified end-to-end CI/integration/browser test coverage.
+**Remaining release gaps (verify against current code and evidence):** large-PDF support (>5 MiB), reliable full-project paginated reporting, validated supporting-document segmentation, production-ready handwritten-form field mapping, initial workbook migration, real-data acceptance/backup, canonical audit-schema parity, and fully verified synthetic end-to-end integration. A queue consumer, claim-token fencing and bounded recovery logic are now implemented on the draft branch, but their live integrations are not fully accepted.
 
 ## 2. Required runtime secrets and feature flags
 
@@ -86,9 +86,9 @@ Gate F: production go/no-go and operational monitoring.
 
 Keep `SMART_CAPTURE_ENABLED=false` and `SMART_CAPTURE_PROCESSING_ENABLED=false` until the applicable gates complete. The current repository's existing submission-readiness rules remain provisional and are not altered.
 
-## 7. Cloudflare Queue deployment gate (not provisioned)
+## 7. Cloudflare Queue deployment gate (isolated synthetic resources provisioned; production remains off)
 
-The Worker now includes a queue producer (`POST /api/projects/:project/smart-capture/imports/:id/enqueue`) and sequential queue consumer. Both remain disabled unless `SMART_CAPTURE_QUEUE_ENABLED=true` and the dedicated `SMART_CAPTURE_QUEUE` producer binding are provisioned. **Do not set these flags in the existing live Worker.** A queue resource and consumer subscription must first be created by an authorised Cloudflare operator and tested on a disposable Worker environment, not the production domain.
+The Worker now includes a queue producer (`POST /api/projects/:project/smart-capture/imports/:id/enqueue`) and sequential queue consumer. Both remain disabled unless `SMART_CAPTURE_QUEUE_ENABLED=true` and the dedicated `SMART_CAPTURE_QUEUE` producer binding are provisioned. **Do not set these flags in the existing live Worker.** Isolated synthetic queue and consumer resources have been created and exercised separately. The original synthetic queue acknowledged messages and tested retry-to-DLQ; a separate Neon-probe queue and Worker have been deployed with the feature flag disabled. The isolated queue-to-Neon success test is still pending. Neither resource is evidence of production readiness.
 
 Example bindings to add **only in the isolated test environment** after the queue exists:
 
@@ -118,7 +118,7 @@ Stage transitions, failure marking and encrypted proposal commit now require the
 
 **Important remaining race:** actor-only claim ownership is not a unique processing-attempt token. If the *same actor* retries and reclaims an import while an earlier worker is still running, the old worker may see a newly active claim with the same actor. Before production bulk use, add a random per-attempt claim token (or monotonically increasing attempt generation) to every state-changing SQL predicate and an integration test that races an old attempt against a new attempt by the same actor. This is a release blocker, not an acceptable residual risk.
 
-## SC-018 — isolated database security validation (not yet executed)
+## SC-018 — isolated database security validation (partially exercised; canonical gate remains open)
 
 The read-only SQL checks in `migrations/20261027_smart_capture_security_preflight_READONLY.sql` must return **zero findings** on a synthetic, isolated database after migration review. They inspect the claim token column, FORCE RLS on all three Smart Capture tables, and accidental DELETE grants to the restricted runtime role.
 
@@ -230,3 +230,13 @@ The isolated DB still has **no login credentials** for `emalahleni_worker`; data
 A test-only login role `vectra_sc_synthetic_limited` was created **by SQL** on the isolated test branch `br-proud-union-zaded8kk`. This was necessary because a role generated via Neon connector unexpectedly inherited `neon_superuser` and `BYPASSRLS`; that earlier role `vectra_sc_synthetic_probe` was deleted immediately and confirmed absent. The replacement role has `NOBYPASSRLS`, `NOINHERIT`, and no memberships. Its password was created and rotated without outputting credentials to chat or GitHub. It can only SELECT the single non-PII row in `smart_capture_test.integration_probe`; PostgreSQL denied its attempted SELECTs on `public.applications` and `public.smart_capture_imports`.
 
 The standalone test Worker source `src/smart-capture-synthetic-neon-worker.ts` accepts only a dedicated synthetic queue schema and, with an explicit flag, reads that harmless probe row. This is **not deployed**; do not overwrite the manually tested dashboard Worker or connect the real Smart Capture processing queue. See `docs/SMART_CAPTURE_SYNTHETIC_NEON_PROBE.md` for wiring and credential-handling restrictions. The role should be deleted after testing. No real beneficiary records were accessed.
+
+
+## 10. Synthetic Google Drive fixture and current acceptance evidence (27 October 2026)
+
+- Approved parent: `1NqFEN-rGEtXAzyk5HPDl4oFZOkJJqbru`; synthetic source root: `1jTDNtpo0KAp27vf4f6G6eBTYc8HKS2tA`; synthetic beneficiary subfolder: `1ukw-8tFxcdfB2G-L8fs_VBKBOhsQNSh5`; synthetic PDF: `1YUJLAGci2yHXAXpwKFYJtfthQK9MnGZd`.
+- ChatGPT's connected Google Drive account created the folder, uploaded the fictional PDF, moved it to the beneficiary subfolder, and verified the folder contents. **This is not a test of the application's service-account credentials.**
+- Synthetic discovery adapter tests validate folder-parent and PDF-parent containment, metadata-only requests, and the hierarchy; latest green CI commit at the time of writing: `f302ecd9`.
+- Next gate: prove the isolated Smart Capture service account can list only the synthetic root and its beneficiary folder, without broadening Drive sharing. Then verify synthetic DB discovery and processing in the isolated environment.
+- Never configure the existing production Worker to point at this folder or enable production feature flags for testing.
+- Evidence details: `SMART_CAPTURE_DRIVE_SYNTHETIC_FIXTURE.md`, `SMART_CAPTURE_NEON_PROBE_ACCEPTANCE.md`, and `SMART_CAPTURE_AUDIT_SCHEMA_EVIDENCE.md`.
