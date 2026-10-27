@@ -11,3 +11,4 @@ import './smart-capture-drive.test.ts';
 import './smart-capture-import.test.ts';
 import './smart-capture-proposal.test.ts';
 import './smart-capture-routes.test.ts';
+import './smart-capture-document-ai.test.ts';
