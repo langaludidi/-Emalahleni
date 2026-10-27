@@ -16,3 +16,4 @@ import './smart-capture-crypto.test.ts';
 import './smart-capture-review.test.ts';
 import './smart-capture-folders.test.ts';
 import './smart-capture-classify.test.ts';
+import './smart-capture-retry.test.ts';
