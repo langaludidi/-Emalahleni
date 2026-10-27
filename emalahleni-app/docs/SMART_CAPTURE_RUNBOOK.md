@@ -198,3 +198,17 @@ The **disabled test-only** queue fragment is `docs/smart-capture-queue-synthetic
 The isolated Neon branch `br-proud-union-zaded8kk` was used for synthetic schema/role tests; it is not a canonical runtime environment. The actual restricted-role confirmation parity preflight still reports missing `audit_events`, missing `applications` INSERT permission, and a non-login worker role. A savepoint test temporarily created a mock audit table and INSERT grant and proved the transaction path, then rolled them back. **Do not permanently grant application INSERT or create an audit table just to silence these findings.** First reconcile the canonical deployment migrations, verify the actual production schema through a reviewed read-only inspection, and design an audited least-privilege draft-creation interface.
 
 No Cloudflare Queue resources were provisioned by this PR. No production database, runtime secret, Cloudflare route, or real document was changed.
+
+## SC-029 — observed live synthetic queue evidence, 27 October 2026
+
+Cloudflare account `f887a522ca852a80491c2485853d4363` now has two EU-jurisdiction test resources: `vectra-smart-capture-synthetic-test` and `vectra-smart-capture-synthetic-test-dlq`. The standalone Worker `vectra-smart-capture-test` was deployed to its own `workers.dev` hostname; it is **not** the existing `emalahleni-api-staging` Worker.
+
+User-provided Cloudflare screenshots established:
+- Processing queue: 1 synthetic message ingested, 1 acknowledged, 0 retried, backlog 0; Worker logs show `Synthetic queue test processed` around 17:31 SAST.
+- Dead-letter queue: 1 message ingested and backlog 1, after a deliberately retried synthetic message. Screenshots establish DLQ delivery, not the precise retry count.
+- A later screenshot showed active standalone Worker version `10cf5044` with synthetic-only handler, no intentional DLQ retry branch. This observation does not independently verify the deployed source commit in GitHub.
+- No actual application processing occurred: no Drive files, OCR, beneficiary PDFs, Neon application records, or R2 evidence were routed through this Worker.
+
+The source of a credentials-free synthetic Worker is now versioned at `docs/smart-capture-synthetic-worker.ts` for future reproducibility; GitHub CI asserts it cannot reference production Drive/Neon/R2 bindings. The current dashboard Worker was edited manually, so future source-of-truth alignment requires an explicitly authorised standalone test Worker deployment, not a production deploy.
+
+**Security constraint:** The consumer of a production queue must validate a separate versioned message schema and reauthorise each import. Never route schema-1 real Smart Capture messages to the synthetic Worker: it acknowledges and discards non-test payloads by design. Never attach a real producer to this synthetic queue. Keep all Smart Capture processing feature flags off until the canonical DB privilege/audit gaps and document privacy approvals are resolved.
