@@ -148,3 +148,14 @@ Verified with the actual restricted `emalahleni_worker` role:
 - Before extraction, a direct proposal INSERT was rejected; legitimate `EXTRACTING` proposal creation and `NEEDS_REVIEW` revision-1 update succeeded
 
 A role-matrix and state-machine integration test has therefore been performed, but **this is not a production security clearance**. The server continues to use broad project-writer UPDATE grants; token and state triggers are defence-in-depth, not a substitute for dedicated, audited server-only transition functions. Other outstanding release gates include negative proposal UPDATE tests, cross-project insert attempts, atomic confirmation race testing, storage/orphan recovery, real queue integration, runtime secrets and privacy/security approval. No real beneficiary PDFs were processed.
+
+## SC-022 — confirmation parity blockers (isolated branch, 27 October 2026)
+
+The restricted-role synthetic walkthrough reached `NEEDS_REVIEW` and successfully exercised versioned proposal editing. It could **not** create the normal application draft: `emalahleni_worker` is denied `INSERT` on `public.applications`. Read-only `migrations/20261027_smart_capture_commit_parity_READONLY.sql` confirmed three findings on the isolated clone:
+1. `AUDIT_EVENTS_TABLE_MISSING` (the synthetic preview database has no `public.audit_events`).
+2. `APPLICATION_INSERT_GRANT_MISSING` for the restricted runtime role.
+3. `WORKER_LOGIN_DISABLED` for the restricted runtime role.
+
+These are **baseline environment parity findings**, not permission changes made by Smart Capture. Existing non-Smart-Capture draft-creation code also attempts application INSERT and audit-event INSERT, so check the canonical runtime database and deploy migrations before assuming that flow works there. Do not issue blanket grants solely to make the test pass. Prefer an audited, project-scoped draft-creation transaction with least-privilege role permissions, or a reviewed SECURITY DEFINER function with explicit actor/project/role checks and immutable audit recording. Confirm actual production schema and grants separately **with permission**, without altering it.
+
+SC-021 additionally passed a negative test: editing a proposal while its import was still `EXTRACTING` was rejected by the database with `SMART_CAPTURE_PROPOSAL_UPDATE_DENIED`, and the test transaction rolled back. Confirmation, audit insertion and competing-confirmation integration tests remain blocked pending a synthetic environment matching the canonical database permissions.
