@@ -118,12 +118,13 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
   let scanResponse:Response,scan:unknown;
   try{
    scanResponse=await env.SCANNER.fetch(new Request('https://scanner.internal/scan',{
-    method:'POST',headers:{Authorization:`Bearer ${env.SCANNER_TOKEN}`,'Content-Type':'application/pdf'},
+    method:'POST',headers:{Authorization:`Bearer ${env.SCANNER_TOKEN}`,'Content-Type':'application/octet-stream'},
     body:pdf.buffer.slice(pdf.byteOffset,pdf.byteOffset+pdf.byteLength),
     signal:AbortSignal.timeout(120_000),
    }));
    scan=JSON.parse(new TextDecoder().decode(await readBytes(scanResponse,8192)));
   }catch{errorCode='SCANNER_UNAVAILABLE';throw Error(errorCode);}
+  if(scanResponse.status!==200){errorCode='SCANNER_UNAVAILABLE';throw Error(errorCode);}
   const verdict=scan as {sha256?:string;verdict?:string};
   if(verdict.sha256!==hash||!['CLEAN','INFECTED'].includes(verdict.verdict??'')){
    errorCode='SCANNER_RESULT_INVALID';throw Error(errorCode);
