@@ -142,6 +142,13 @@ export default function SmartCaptureReview(){
         <input value={dep.relationship} aria-label={`Dependant ${i+1} relationship`} onChange={e=>changeHousehold('dependants',proposal.household.dependants.map((d,n)=>n===i?{...d,relationship:e.target.value}:d))}/>
        </div>)}
        {renderCheck('household.dependants')}</div>
+      <h3>Supporting-document page suggestions</h3>
+      <p className={styles.minor}>Automated classification is preliminary. Every supporting document must be checked and verified separately in the main VectraSA evidence workflow.</p>
+      {proposal.sections.length===0?<p className={styles.minor}>No page classification is available.</p>:
+       proposal.sections.map((section,index)=><div className={styles.conflict} key={index}>
+        <span>{section.type.replaceAll('_',' ')} · Page {section.fromPage}{section.toPage!==section.fromPage?'–'+section.toPage:''} · {section.status}</span>
+        <button className={styles.secondary} onClick={()=>setPage(section.fromPage)}>View page</button>
+       </div>)}
       {Object.keys(proposal.extraFields).length>0&&<div className={styles.notice}><h3>Information outside current VectraSA fields</h3>
        {Object.entries(proposal.extraFields).map(([name,value])=><p key={name}><strong>{name}:</strong> {value}</p>)}
        <p>These fields remain with the encrypted import proposal, not the beneficiary form.</p>
