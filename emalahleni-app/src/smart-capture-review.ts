@@ -74,12 +74,11 @@ export async function confirmSmartCaptureProposal(db:Database,actor:string,proje
  const sealed=await encryptForm(check.form,env.FORM_ENCRYPTION_KEY,project,caseId);
  const [rows]=await db.forActor(actor,[{query:`
   WITH claimed AS (
-    UPDATE public.smart_capture_imports i
-     SET state='COMMITTING',updated_at=now()
+    SELECT i.id FROM public.smart_capture_imports i
     WHERE i.id=$1 AND i.project_id=$2 AND i.state='NEEDS_REVIEW'
       AND EXISTS (SELECT 1 FROM public.smart_capture_proposals p
        WHERE p.import_id=i.id AND p.project_id=i.project_id AND p.review_version=$3)
-    RETURNING id
+    FOR UPDATE OF i
   ), created AS (
     INSERT INTO public.applications (id,organisation_id,project_id,reference,fields_ciphertext)
      SELECT $4,p.organisation_id,p.id,$5,$6 FROM claimed c
