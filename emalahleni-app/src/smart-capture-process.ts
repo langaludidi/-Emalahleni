@@ -130,6 +130,7 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    errorCode='SCANNER_RESULT_INVALID';throw Error(errorCode);
   }
   if(verdict.verdict==='INFECTED'){
+   await env.EVIDENCE_BUCKET.delete(storageKey);
    await updateState(db,actor,project,id,stage,'REJECTED');
    return {importId:id,state:'REJECTED'};
   }
