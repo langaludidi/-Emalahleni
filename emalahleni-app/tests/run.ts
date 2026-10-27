@@ -19,3 +19,4 @@ import './smart-capture-classify.test.ts';
 import './smart-capture-retry.test.ts';
 import './smart-capture-batch.test.ts';
 import './smart-capture-queue.test.ts';
+import './smart-capture-recovery.test.ts';
