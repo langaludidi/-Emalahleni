@@ -9,6 +9,7 @@ import {HttpError} from './http';
 import {extractionProposalSchema,proposeCaseForm} from './smart-capture-proposal';
 import {sealSmartCaptureProposal,openSmartCaptureProposal} from './smart-capture-crypto';
 import {encryptForm} from './crypto';
+import {validSmartCaptureQuarantineKey} from './smart-capture-storage';
 
 type ReviewEnv={SMART_CAPTURE_ENABLED?:string;SMART_CAPTURE_PROCESSING_ENABLED?:string;
  SMART_CAPTURE_ENCRYPTION_KEY?:string;FORM_ENCRYPTION_KEY?:string;EVIDENCE_BUCKET?:R2Bucket;};
@@ -119,7 +120,7 @@ export async function downloadSmartCapturePdf(db:Database,actor:string,projectId
  if(!rows.length||!rows[0].storage_key||!rows[0].content_sha256)
   throw new HttpError(404,'SMART_CAPTURE_PDF_UNAVAILABLE');
  const key=String(rows[0].storage_key);
- if(key!==`smart-capture/quarantine/${project}/${id}/original.pdf`)
+ if(!validSmartCaptureQuarantineKey(key,project,id))
   throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
  const stored=await env.EVIDENCE_BUCKET.get(key);
  if(!stored||stored.size>5*1024*1024)throw new HttpError(404,'SMART_CAPTURE_PDF_UNAVAILABLE');
