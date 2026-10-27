@@ -33,7 +33,7 @@ export async function reconcileStaleSmartCaptureImports(
   )
   UPDATE public.smart_capture_imports i
   SET state='FAILED',error_code='STALE_CLAIM_REQUIRES_REVIEW',
-   claimed_at=NULL,claimed_by=NULL,updated_at=now()
+   claimed_at=NULL,claimed_by=NULL,claim_token=NULL,updated_at=now()
   FROM candidates c WHERE i.id=c.id AND i.project_id=$1
   RETURNING i.id`,params:[project,actor]}]);
  return {markedForReview:rows.length,importIds:rows.map(r=>String(r.id)),
