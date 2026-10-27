@@ -103,13 +103,13 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
-    const smartCaptureRetryRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/retry$/i);
+    const smartCaptureRetryRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\\/([0-9a-f-]+)\/retry$/i);
     if(smartCaptureRetryRoute){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
       return json(await retrySmartCaptureImport(db,actor,
        z.uuid().parse(smartCaptureRetryRoute[1]),z.uuid().parse(smartCaptureRetryRoute[2]),env));
     }
-    const smartCaptureReviewRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/(proposal|confirm|pdf)$/i);
+    const smartCaptureReviewRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\\/([0-9a-f-]+)\/(proposal|confirm|pdf)$/i);
     if(smartCaptureReviewRoute){
       const project=z.uuid().parse(smartCaptureReviewRoute[1]);
       const imported=z.uuid().parse(smartCaptureReviewRoute[2]);
@@ -124,7 +124,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
         return await downloadSmartCapturePdf(db,actor,project,imported,env);
       throw new HttpError(405,'METHOD_NOT_ALLOWED');
     }
-    const smartCaptureProcessRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/imports\\/([0-9a-f-]+)\\/process$/i);
+    const smartCaptureProcessRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\\/([0-9a-f-]+)\\/process$/i);
     if(smartCaptureProcessRoute){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
       if(env.SMART_CAPTURE_ENABLED!=='true'||env.SMART_CAPTURE_PROCESSING_ENABLED!=='true')
@@ -132,7 +132,7 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json(await processSmartCaptureImport(db,actor,
        z.uuid().parse(smartCaptureProcessRoute[1]),z.uuid().parse(smartCaptureProcessRoute[2]),env));
     }
-    const smartCaptureRoute=path.match(/^\\/api\\/projects\\/([0-9a-f-]+)\\/smart-capture\\/(imports|sources)(?:\\/([0-9a-f-]+)\\/sync)?$/i);
+    const smartCaptureRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/(imports|sources)(?:\\/([0-9a-f-]+)\\/sync)?$/i);
     if(smartCaptureRoute){
       if(env.SMART_CAPTURE_ENABLED!=='true')throw new HttpError(503,'SMART_CAPTURE_NOT_ENABLED');
       const project=z.uuid().parse(smartCaptureRoute[1]);
