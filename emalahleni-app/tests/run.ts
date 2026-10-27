@@ -14,3 +14,4 @@ import './smart-capture-routes.test.ts';
 import './smart-capture-document-ai.test.ts';
 import './smart-capture-crypto.test.ts';
 import './smart-capture-review.test.ts';
+import './smart-capture-folders.test.ts';
