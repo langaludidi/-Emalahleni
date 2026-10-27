@@ -117,3 +117,11 @@ Remaining integration test: terminate the consumer at each processing stage and 
 Stage transitions, failure marking and encrypted proposal commit now require the actor to retain an active claim. Once the SC-015 recovery clears `claimed_by` and `claimed_at`, an old worker cannot normally advance its previous state.
 
 **Important remaining race:** actor-only claim ownership is not a unique processing-attempt token. If the *same actor* retries and reclaims an import while an earlier worker is still running, the old worker may see a newly active claim with the same actor. Before production bulk use, add a random per-attempt claim token (or monotonically increasing attempt generation) to every state-changing SQL predicate and an integration test that races an old attempt against a new attempt by the same actor. This is a release blocker, not an acceptable residual risk.
+
+## SC-018 — isolated database security validation (not yet executed)
+
+The read-only SQL checks in `migrations/20261027_smart_capture_security_preflight_READONLY.sql` must return **zero findings** on a synthetic, isolated database after migration review. They inspect the claim token column, FORCE RLS on all three Smart Capture tables, and accidental DELETE grants to the restricted runtime role.
+
+The checks are **necessary but not sufficient**: an authorised reviewer must test two actors from different projects, an inactive membership, a viewer, and an authorised writer against INSERT/UPDATE/SELECT, including direct SQL attempts to bypass HTTP handlers. Review `sc_imports_update` and `sc_proposals_update` carefully: broad project-writer UPDATE policies do not themselves enforce legal state transitions or claim ownership. Those invariants currently rely on server SQL predicates, so a dedicated audited transition-function design remains a production security gate.
+
+Never run these scripts against the existing preview or production branch without explicit environment confirmation. No migrations have been applied as part of this handoff.
