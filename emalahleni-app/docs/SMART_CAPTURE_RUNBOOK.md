@@ -174,3 +174,7 @@ No actual Google Drive documents, beneficiary identities or production resources
 Processing now stores each quarantined PDF under `smart-capture/quarantine/<project>/<import>/<attempt-token>/original.pdf` rather than a shared per-import object. The review endpoint validates the exact project/import prefix and a version-4 attempt token before reading from the private R2 bucket; the existing content SHA-256 verification remains. Failed attempts best-effort delete **only their own token-specific object**, preventing a stale attempt from overwriting or deleting a newer attempt's source document. This is code on the draft branch only and has not been deployed.
 
 **Still required:** operator-controlled orphan cleanup of crash-abandoned R2 objects, separate quarantine retention decisions, and an integration test that interrupts two workers while the newer worker uploads its file. Do not activate ingestion before these risks and privacy retention policies are reviewed.
+
+## SC-025 — HTTP route repair
+
+The single-import `POST /api/projects/:projectId/smart-capture/imports/:importId/process` and approved-source `POST /api/projects/:projectId/smart-capture/sources/:sourceId/sync` patterns were normalised to use valid regex literal slash escapes. The existing route test now guards both expressions against malformed duplicated backslashes. This change is on the draft GitHub branch only.
