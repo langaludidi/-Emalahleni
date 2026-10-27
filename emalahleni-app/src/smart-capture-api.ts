@@ -96,12 +96,12 @@ export async function smartCaptureSync(db:Database,actor:string,projectId:string
  const token=await googleServiceToken(env.SMART_CAPTURE_DRIVE_CLIENT_EMAIL,env.SMART_CAPTURE_DRIVE_PRIVATE_KEY,'https://www.googleapis.com/auth/drive.readonly');
  // Root contains one separate folder per beneficiary. Do not scan only root PDFs.
  const folderPage=await listBeneficiaryFolders({rootFolderId:folder,accessToken:token,pageToken});
- const identifiers:Array<{id:string;folderId:string;version:string;size:number}>=[];
+ const identifiers:Array<{id:string;folder_id:string;version:string;size:number}>=[];
  for(const child of folderPage.folders){
   const files=await listBeneficiaryPdfs({approvedFolderId:child.id,accessToken:token});
   if(files.nextPageToken!==null)throw new HttpError(409,'BENEFICIARY_FOLDER_PDF_LIMIT');
   for(const file of files.files)identifiers.push({
-   id:file.providerFileId,folderId:child.id,version:discoveryVersion(file),size:file.sizeBytes
+   id:file.providerFileId,folder_id:child.id,version:discoveryVersion(file),size:file.sizeBytes
   });
  }
  let newRows=0;
