@@ -102,3 +102,12 @@ Example bindings to add **only in the isolated test environment** after the queu
 This example is not added to the live `wrangler.jsonc` because creating a queue, DLQ, and permissions requires separate operational approval. Messages contain only import UUID, project UUID and the authenticated initiating actor. A duplicate message is protected by the existing atomic `DISCOVERED -> FETCHING` claim. Sequential consumer processing limits per-invocation concurrency; a separate Cloudflare consumer concurrency limit of **one** must also be set in the test environment. Failed jobs are stored as `FAILED` and recovered through explicit, bounded operator retry, not automatic queue replay.
 
 **Remaining blocker:** queue delivery acknowledgment and crash recovery need end-to-end tests, including consumer termination between external provider call and database state update. Do not enable unattended bulk processing until an approved lease/reconciler handles stale `FETCHING`, `SCANNING` and `EXTRACTING` states without repeating ambiguous external work.
+
+## 8. Stale import claim reconciliation (SC-015, operator-controlled)
+
+New protected endpoint: `POST /api/projects/:projectId/smart-capture/recover`.
+Only active project `ADMIN` or `MANAGER` may invoke it, and both processing feature flags must be enabled. The endpoint checks up to 20 imports claimed for more than 30 minutes in `FETCHING`, `QUARANTINED`, `SCANNING`, or `EXTRACTING`. It atomically marks them `FAILED` with `STALE_CLAIM_REQUIRES_REVIEW`, releases the claim, and returns import UUIDs for manual investigation.
+
+**This is a safety mechanism, not an automatic retry.** The explicit retry endpoint does not allow `STALE_CLAIM_REQUIRES_REVIEW`; a human must investigate partial R2 quarantine, scanner status, provider charges and whether an extraction proposal was committed. `COMMITTING`, `COMMIT_UNCERTAIN`, `COMMITTED`, and `REJECTED` are never altered by this reconciliation.
+
+Remaining integration test: terminate the consumer at each processing stage and verify that a late worker cannot advance a row after the administrator marks it stale; verify source PDF and private quarantine retention policies. Avoid running this endpoint while an unusually long valid scan is still executing; adjust lease/heartbeat design before unattended bulk imports.
