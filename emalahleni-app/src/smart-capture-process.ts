@@ -158,7 +158,14 @@ export async function processSmartCaptureImport(db:Database,actor:string,project
    params:[id,project,ciphertext]}]);
   if(!saved.length)throw new HttpError(409,'SMART_CAPTURE_STATE_CHANGED');
   return {importId:id,state:'NEEDS_REVIEW'};
- }catch{
+ }catch(cause){
+  // Map known provider failures to stable non-PII codes for controlled retries.
+  // Never return raw provider errors, scanned content or extracted identity data.
+  if(cause instanceof Error&&[
+   'DOCUMENT_AI_UNAVAILABLE','DOCUMENT_AI_PROCESSING_FAILED',
+   'DOCUMENT_AI_RESPONSE_INVALID','DOCUMENT_AI_RESPONSE_TOO_LARGE',
+   'DOCUMENT_AI_PDF_SIZE','DOCUMENT_AI_PDF_INVALID',
+  ].includes(cause.message))errorCode=cause.message;
   try{await markFailed(db,actor,project,id,errorCode);}catch{}
   throw new HttpError(503,errorCode);
  }
