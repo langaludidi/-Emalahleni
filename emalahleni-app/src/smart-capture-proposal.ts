@@ -49,6 +49,7 @@ export const confirmationSchema=z.object({
  confirmedUnknownBooleans:z.array(z.enum(['disability','disaster','propertyOwned','propertySold'])).default([]),
  confirmedFields:z.array(z.string()).max(100),
 }).strict();
+export type ConfirmationInput=z.input<typeof confirmationSchema>;
 export type ConfirmationResult={form:CaseForm;blockingIssues:string[];reviewIssues:string[]};
 export function proposeCaseForm(input:unknown):ConfirmationResult{
  const data=confirmationSchema.parse(input);
