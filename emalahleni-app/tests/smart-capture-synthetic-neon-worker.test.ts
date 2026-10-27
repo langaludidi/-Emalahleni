@@ -9,6 +9,8 @@ test('SC-031 rejects owner credentials and non-Neon hosts',()=>{
   'postgresql://vectra_sc_synthetic_limited:fake@not-neon.example/vectra_preview?sslmode=require'));
  assert.throws(()=>checkSyntheticDatabaseUrl(
   'postgresql://vectra_sc_synthetic_limited:fake@synthetic.neon.tech/vectra_preview'));
+ assert.throws(()=>checkSyntheticDatabaseUrl(
+  'postgresql://vectra_sc_synthetic_limited:fake@synthetic.neon.tech/production?sslmode=require'));
  assert.equal(checkSyntheticDatabaseUrl(
   'postgresql://vectra_sc_synthetic_limited:fake@synthetic.neon.tech/vectra_preview?sslmode=require'),
   'postgresql://vectra_sc_synthetic_limited:fake@synthetic.neon.tech/vectra_preview?sslmode=require');
