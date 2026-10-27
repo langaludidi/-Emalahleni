@@ -16,6 +16,7 @@ import {projectDashboard} from './dashboard';
 import {smartCaptureList,smartCaptureSources,smartCaptureSync} from './smart-capture-api';
 import {processSmartCaptureImport} from './smart-capture-process';
 import {retrySmartCaptureImport} from './smart-capture-retry';
+import {enqueueSmartCaptureImport} from './smart-capture-queue';
 import {readSmartCaptureProposal,saveSmartCaptureProposal,confirmSmartCaptureProposal,downloadSmartCapturePdf} from './smart-capture-review';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
@@ -24,6 +25,8 @@ export interface Env extends IdReadingEnv,RateLimitEnv {
   SMART_CAPTURE_ENABLED?: string; SMART_CAPTURE_DRIVE_CLIENT_EMAIL?: string;
   SMART_CAPTURE_DRIVE_PRIVATE_KEY?: string; SMART_CAPTURE_DRIVE_SOURCES_JSON?: string;
   SMART_CAPTURE_PROCESSING_ENABLED?: string;
+  SMART_CAPTURE_QUEUE_ENABLED?: string;
+  SMART_CAPTURE_QUEUE?: Queue<import('./smart-capture-queue').SmartCaptureQueueMessage>;
   SMART_CAPTURE_AI_CLIENT_EMAIL?: string; SMART_CAPTURE_AI_PRIVATE_KEY?: string;
   SMART_CAPTURE_AI_PROCESSOR_NAME?: string; SMART_CAPTURE_ENCRYPTION_KEY?: string;
 }
@@ -103,6 +106,12 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       return json({ projects: rows });
     }
     // Smart Capture is off unless explicitly enabled after migrations and privacy approval.
+    const smartCaptureEnqueueRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\/([0-9a-f-]+)\/enqueue$/i);
+    if(smartCaptureEnqueueRoute){
+      if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
+      return json(await enqueueSmartCaptureImport(db,actor,
+       z.uuid().parse(smartCaptureEnqueueRoute[1]),z.uuid().parse(smartCaptureEnqueueRoute[2]),env),202);
+    }
     const smartCaptureRetryRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/smart-capture\/imports\/([0-9a-f-]+)\/retry$/i);
     if(smartCaptureRetryRoute){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
