@@ -15,11 +15,12 @@ Vectra Assure remains a synthetic-data development app. Moving it to a company s
 
 ## Capture to evidence
 
-1. Sign in, choose the project, and start a new form or reopen the existing draft.
-2. Use a unique synthetic reference beginning `SYN-`. Capture can be incomplete, but formats, dates and coordinates must be valid for saving.
-3. Save deliberately. Saving an unchanged draft does not create another version. A successful save remains acknowledged even if refreshing the application picker fails.
-4. From site verification, use **Save and open evidence**. Failed saves keep the operator in capture. Capture edits are allowed only for draft or returned applications and an assigned capture role; other saved states are read only.
-5. Upload evidence against the saved case. Choosing a file does not upload it. Keep the app open during upload, scanning, reading and review writes; application navigation is held during those operations.
+1. Existing users sign in. New users choose **Sign up**, create an account, request the email code and verify it, then sign in. A project administrator must assign their project and role; registration alone grants no case access. Users waiting for assignment can choose **Account → Refresh projects** after access is granted.
+2. Choose the assigned project and start a new form or reopen the existing draft.
+3. Use a unique synthetic reference beginning `SYN-`. Capture can be incomplete, but formats, dates and coordinates must be valid for saving.
+4. Save deliberately. Saving an unchanged draft does not create another version. A successful save remains acknowledged even if refreshing the application picker fails.
+5. From site verification, use **Save and open evidence**. Failed saves keep the operator in capture. Capture edits are allowed only for draft or returned applications and an assigned capture role; other saved states are read only.
+6. Upload evidence against the saved case. Choosing a file does not upload it. Keep the app open during upload, scanning, reading and review writes; application navigation is held during those operations.
 
 Home keeps capture and in-progress document input in the current tab. Moving out of Documents asks before discarding unrecorded document input. Resume returns to that work. Starting over, changing project/workspace, reopening another application or signing out asks before discarding pending form/document changes. Browser storage is not used to retain beneficiary fields. Closing the tab can still lose unsaved work.
 

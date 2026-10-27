@@ -25,6 +25,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function needsEmailVerification(error: unknown) {
   return !!error && typeof error === 'object' && 'code' in error && ['EMAIL_NOT_VERIFIED','EMAIL_NOT_CONFIRMED'].includes(String(error.code).toUpperCase());
 }
+function authErrorCode(error:unknown) { return error&&typeof error==='object'&&'code' in error?String(error.code).toUpperCase():''; }
+function registrationFailure(error:unknown) {
+  if(['USER_ALREADY_EXISTS','USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL','EMAIL_EXISTS'].includes(authErrorCode(error)))return new Error('An account already exists. Sign in or reset your password.');
+  return error instanceof Error?error:new Error(error&&typeof error==='object'&&'message' in error?String(error.message):'Unable to create the account. Please try again.');
+}
 function formSnapshot(form:CaseForm,reference:string) { return JSON.stringify({form,reference}); }
 
 export default function Page() {
@@ -36,6 +41,8 @@ export default function Page() {
   const [dashboardLoading,setDashboardLoading] = useState(false); const [dashboardError,setDashboardError] = useState('');
   const [dashboardRevision,setDashboardRevision] = useState(0);
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('');
+  const [registering,setRegistering] = useState(false);const [signupName,setSignupName] = useState('');const [signupConfirm,setSignupConfirm] = useState('');
+  const [projectsLoaded,setProjectsLoaded] = useState(false);
   const [verificationNeeded,setVerificationNeeded] = useState(false);
   const [verificationSent,setVerificationSent] = useState(false); const [verificationCode,setVerificationCode] = useState('');
   const [recovering,setRecovering] = useState(false); const [resetSent,setResetSent] = useState(false);
@@ -80,7 +87,7 @@ export default function Page() {
     const blob=pack?await exports.draftPack(data,async id=>{const token=await accessToken();const response=await fetch(`/api/projects/${data.projectId}/applications/${data.applicationId}/evidence/${id}/download`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('An evidence document is no longer available. Refresh before exporting.');return response.arrayBuffer();},async()=>{const current=await api(`/api/projects/${data.projectId}/applications/${data.applicationId}/export`);return current.fingerprint;}):await exports.summaryPdf(data);
     const objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=`${data.reference}-${pack?'draft-pack':'verification-summary'}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setStatus(pack?'Draft pack generated from verified, clean evidence. Submission remains unapproved.':'Verification summary generated.');
   }
-  async function loadProjects() { const result=await api('/api/projects');setProjects(result.projects);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
+  async function loadProjects() { setProjectsLoaded(false);const result=await api('/api/projects');setProjects(result.projects);setProjectsLoaded(true);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
   useEffect(()=> {
     let live=true;
     // Session lookup must not trap a visitor behind a loading screen on a poor connection.
@@ -106,10 +113,32 @@ export default function Page() {
     } catch(error) { if(needsEmailVerification(error)){showVerification();return;}throw error; }
     finally { setPassword(''); }
   }
+  function toggleRegistration(value:boolean) {
+    setRegistering(value);setPassword('');setSignupConfirm('');setSignupName('');setRecovering(false);clearRecovery();
+    setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
+    setStatus(value?'Create your account, then verify your email. A project administrator must assign your project access.':'Enter your email and password to sign in.');
+  }
+  async function openSignUp() {
+    if(user)return;
+    if(mode!=='connected'&&!await changeMode('connected'))return;
+    setConnectionOpen(true);setView('home');toggleRegistration(true);
+    requestAnimationFrame(()=>document.getElementById('signup-name')?.focus());
+  }
+  async function signUp() {
+    if(!signupName.trim()||signupName.trim().length>120||password.length<8||password.length>128||password!==signupConfirm)throw new Error('Enter your name and matching passwords of 8 to 128 characters.');
+    try {
+      const result=await auth.signUp.email({name:signupName.trim(),email:email.trim(),password});
+      if(result.error)throw result.error;
+      if(!result.data?.user)throw new Error('Account creation could not be confirmed. Try signing in or resetting your password before registering again.');
+      setRegistering(false);setSignupName('');
+      if(result.data.user.emailVerified===true){setUser(result.data.user.name||email.trim());setView('home');await loadProjects();}
+      else {showVerification();setStatus('Account created. Verify your email using the code below, then sign in. Project access must be assigned by an administrator.');}
+    } catch(error) {throw registrationFailure(error);} finally {setPassword('');setSignupConfirm('');}
+  }
   async function signOut() {
     if(!confirmDiscard('Log out'))return;
     const result=await auth.signOut();if(result.error)throw new Error(result.error.message || 'Unable to sign out. Please try again.');
-    setUser('');setPassword('');setRecovering(false);clearRecovery();setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
+    setUser('');setPassword('');setRegistering(false);setSignupName('');setSignupConfirm('');setProjectsLoaded(false);setRecovering(false);clearRecovery();setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
     setProjects([]);setCases([]);setProject('');setDashboard(null);setConnectionOpen(false);clearCapture();setView('home');setMode('connected');setStatus('Signed out.');
   }
   async function sendVerification() {
@@ -118,17 +147,22 @@ export default function Page() {
     setVerificationSent(true);setVerificationCode('');setStatus('Verification code sent. Check your inbox and spam folder.');
   }
   async function verifyEmail() {
-    const result=await auth.emailOtp.verifyEmail({email,otp:verificationCode});
-    if(result.error)throw new Error(result.error.message || 'The verification code is invalid or expired.');
-    setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setStatus('Email verified. Enter your password and sign in.');
+    try {
+      const result=await auth.emailOtp.verifyEmail({email,otp:verificationCode});
+      if(result.error)throw result.error;
+      setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');setStatus('Email verified. Enter your password and sign in.');
+    } catch(error) {
+      if(['INVALID_OTP','OTP_EXPIRED','VALIDATION_FAILED'].includes(authErrorCode(error)))throw new Error('The verification code is invalid or expired.');
+      throw error;
+    }
   }
   function clearRecovery() { setResetSent(false);setResetCode('');setNewPassword('');setConfirmPassword(''); }
   function changeEmail(value:string) {
-    setEmail(value);setPassword('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
-    setStatus(recovering?'Request a reset code for this email address.':'Enter your email and password to sign in.');
+    setEmail(value);setPassword('');setSignupConfirm('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
+    setStatus(recovering?'Request a reset code for this email address.':registering?'Create your account, then verify your email. A project administrator must assign your project access.':'Enter your email and password to sign in.');
   }
   function toggleRecovery(value:boolean) {
-    setRecovering(value);setPassword('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
+    setRecovering(value);setRegistering(false);setSignupName('');setSignupConfirm('');setPassword('');setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');clearRecovery();
     setStatus(value?'Request a reset code, then choose your own password.':'Enter your email and password to sign in.');
   }
   async function sendResetCode() {
@@ -154,6 +188,7 @@ export default function Page() {
     setConnectionOpen(next==='connected');setStatus(next==='preview'?'Preview mode · changes stay in this tab.':'Sign in to access your applications.');if(user&&next==='connected')await loadProjects();return true;
   }
   async function openWorkspace(action:'new'|'saved') {
+    if(!user&&registering)toggleRegistration(false);
     if(mode!=='connected'&&!await changeMode('connected'))return;
     setConnectionOpen(true);
     if(mode==='connected'&&user&&project&&action==='new'&&canCapture){newForm();return;}
@@ -195,10 +230,22 @@ export default function Page() {
   const editable=canCapture&&(!active||['DRAFT','RETURNED'].includes(active.workflow_status));
   if(!sessionReady)return <SplashScreen/>;
   return <main>
-    <header><button className="brand brand-home" aria-label="Vectra Assure home" disabled={working} onClick={()=>{if(view!=='home')home();else{setConnectionOpen(false);setPassword('');setRecovering(false);clearRecovery();window.scrollTo({top:0});}}}><img className="brand-logo" src="/brand/vectra-assure-logo.png" alt="Vectra Assure" width={210} height={54} fetchPriority="high"/><small>by Vectra Solutions</small></button>{user?<details className="account-menu"><summary>Account</summary><div className="account-actions"><span>Signed in as {user}</span><button className="secondary" disabled={working} onClick={()=>run(loadProjects)}>Refresh projects</button><button className="secondary" disabled={working} onClick={()=>run(async()=>{await changeMode('preview');})}>Preview form</button><button className="secondary" disabled={working} onClick={()=>run(signOut)}>Sign out</button></div></details>:view==='home'&&!connectionOpen?<button className="secondary header-sign-in" disabled={working} onClick={()=>run(()=>openWorkspace('new'))}>Sign in</button>:<span className="pill">Development workspace</span>}</header>
-    {view==='home'?<HomeScreen signedIn={!!user} accessOpen={connectionOpen&&mode==='connected'} busy={working} start={()=>run(()=>openWorkspace('new'))} saved={()=>run(()=>openWorkspace('saved'))} preview={()=>run(async()=>{await changeMode('preview');})}/>:mode==='preview'&&<section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>}
+    <header><button className="brand brand-home" aria-label="Vectra Assure home" disabled={working} onClick={()=>{if(view!=='home')home();else{setConnectionOpen(false);setRegistering(false);setSignupName('');setSignupConfirm('');setPassword('');setRecovering(false);clearRecovery();window.scrollTo({top:0});}}}><img className="brand-logo" src="/brand/vectra-assure-logo.png" alt="Vectra Assure" width={210} height={54} fetchPriority="high"/><small>by Vectra Solutions</small></button>{user?<details className="account-menu"><summary>Account</summary><div className="account-actions"><span>Signed in as {user}</span><button className="secondary" disabled={working} onClick={()=>run(loadProjects)}>Refresh projects</button><button className="secondary" disabled={working} onClick={()=>run(async()=>{await changeMode('preview');})}>Preview form</button><button className="secondary" disabled={working} onClick={()=>run(signOut)}>Sign out</button></div></details>:view==='home'&&!connectionOpen?<div className="header-auth-actions"><button className="secondary header-sign-in" disabled={working} onClick={()=>run(()=>openWorkspace('new'))}>Sign in</button><button disabled={working} onClick={()=>run(openSignUp)}>Sign up</button></div>:<span className="pill">Development workspace</span>}</header>
+    {view==='home'?<HomeScreen signup={()=>run(openSignUp)} registering={registering} signedIn={!!user} accessOpen={connectionOpen&&mode==='connected'} busy={working} start={()=>run(()=>openWorkspace('new'))} saved={()=>run(()=>openWorkspace('saved'))} preview={()=>run(async()=>{await changeMode('preview');})}/>:mode==='preview'&&<section className="intro"><p className="eyebrow">APPLICATION WORKSPACE</p><h1>Evidence first.<br/>A clearer path to readiness.</h1><p>Capture the application, confirm field findings and see exactly what remains outstanding.</p></section>}
     {(view==='home'?(!!user||connectionOpen||resumeAvailable):(mode==='preview'||!user))&&<section id="workspace-access" className={`connection ${mode==='connected'?(user?'connection-connected':'connection-access'):''}`} aria-label="Workspace connection"><div className="mode"><button disabled={working} className={mode==='preview'?'selected':''} onClick={()=>run(async()=>{await changeMode('preview');})}>Preview form</button><button disabled={working} className={mode==='connected'?'selected':''} onClick={()=>run(async()=>{await changeMode('connected');})}>Connected workspace</button></div>
-      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:!user&&<form className="login" onSubmit={event=>{event.preventDefault();if(!working&&email&&password&&!recovering)run(signIn);}}><Field label="Email"><input type="email" required autoComplete="username" disabled={working} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>{!recovering&&<><Field label="Password"><input type="password" required autoComplete="current-password" disabled={working} value={password} onChange={e=>setPassword(e.target.value)}/></Field><button type="submit" disabled={working||!email||!password}>Sign in</button></>}<button type="button" className="secondary" disabled={working} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button></form>}
+      {mode==='preview'?<p>Use synthetic examples only. Preview entries are not saved; document uploads are unavailable.</p>:!user&&<>
+        {registering&&<><h2>Create your account</h2><p>Verify your email after registering. A project administrator must assign your access before you can view applications or evidence.</p></>}
+        <form className="login" onSubmit={event=>{event.preventDefault();if(!working&&email&&password&&!recovering)run(registering?signUp:signIn);}}>
+          {registering&&<Field label="Full name"><input id="signup-name" required maxLength={120} autoComplete="name" disabled={working} value={signupName} onChange={e=>setSignupName(e.target.value)}/></Field>}
+          <Field label="Email"><input type="email" required autoComplete="username" disabled={working} value={email} onChange={e=>changeEmail(e.target.value)}/></Field>
+          {!recovering&&<><Field label="Password"><input type="password" required autoComplete={registering?'new-password':'current-password'} minLength={registering?8:undefined} maxLength={registering?128:undefined} disabled={working} value={password} onChange={e=>setPassword(e.target.value)}/></Field>
+          {registering&&<Field label="Confirm password"><input type="password" required autoComplete="new-password" minLength={8} maxLength={128} disabled={working} value={signupConfirm} onChange={e=>setSignupConfirm(e.target.value)}/></Field>}
+          <button type="submit" disabled={working||!email||!password||(registering&&(!signupName.trim()||password.length<8||password.length>128||password!==signupConfirm))}>{registering?'Create account':'Sign in'}</button></>}
+          {registering?<button type="button" className="secondary" disabled={working} onClick={()=>toggleRegistration(false)}>Back to sign in</button>:<><button type="button" className="secondary" disabled={working} onClick={()=>toggleRecovery(!recovering)}>{recovering?'Back to sign in':'Forgot password'}</button>{!recovering&&<button type="button" className="secondary" disabled={working} onClick={()=>toggleRegistration(true)}>Sign up</button>}</>}
+        </form>
+        {registering&&<p className="hint">Use 8 to 128 characters. Enter the same password twice.</p>}
+        {registering&&signupConfirm&&password!==signupConfirm&&<p className="hint" role="status">The passwords do not match.</p>}
+      </>}
       {mode==='connected'&&!user&&<p className="hint" role="status">{busy?'Working…':status}</p>}
       {mode==='connected'&&!user&&recovering&&<fieldset aria-label="Password recovery" disabled={working}>
         <h3>Reset your password</h3><p>Request an emailed code for {email||'your account'}. You do not need your current password.</p>
@@ -212,6 +259,7 @@ export default function Page() {
         <button disabled={resetCode.length!==6||newPassword.length<8||newPassword.length>128||newPassword!==confirmPassword} onClick={()=>run(resetPassword)}>Set new password</button></>}
       </fieldset>}
       {mode==='connected'&&!user&&verificationNeeded&&<fieldset aria-label="Email verification" disabled={working}><h3>Verify your email</h3><p>Request a code for {email}, then enter it here.</p><button className="secondary" disabled={!email} onClick={()=>run(sendVerification)}>{verificationSent?'Send a new verification code':'Send verification code'}</button>{verificationSent&&<><Field label="Email verification code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={verificationCode} onChange={e=>setVerificationCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field><button disabled={verificationCode.length!==6} onClick={()=>run(verifyEmail)}>Verify email</button></>}</fieldset>}
+      {mode==='connected'&&user&&projectsLoaded&&projects.length===0&&<div className="notice" role="status"><strong>Your account is ready. Project access is pending.</strong><p>Ask your project administrator to assign your account to a project and role, then choose Refresh projects from the Account menu. Registering does not grant access to existing applications or evidence.</p></div>}
       {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select id="project-picker" value={project} disabled={working} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select id="draft-picker" value={active?.id??''} disabled={working||!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):newForm()}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field></div>}
     </section>}
     {view==='home'?<>

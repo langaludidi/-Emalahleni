@@ -1,13 +1,13 @@
 'use client';
 
-export default function HomeScreen({signedIn,accessOpen,busy,start,saved,preview}:{signedIn:boolean;accessOpen:boolean;busy:boolean;start:()=>void;saved:()=>void;preview:()=>void}) {
+export default function HomeScreen({signedIn,accessOpen,registering,busy,start,saved,preview,signup}:{signedIn:boolean;accessOpen:boolean;registering:boolean;busy:boolean;start:()=>void;saved:()=>void;preview:()=>void;signup:()=>void}) {
   return <>
     <section className={`home-hero ${signedIn?'home-hero-signed':accessOpen?'home-hero-access':''}`} aria-labelledby="home-title">
       <div className="home-hero-copy">
         <p className="eyebrow">VECTRA ASSURE · APPLICATION & EVIDENCE WORKSPACE</p>
-        <h1 id="home-title">{signedIn?'Your workspace.':accessOpen?'Welcome back.':<>Every application.<br/><span>A clearer way forward.</span></>}</h1>
-        <p>{signedIn?'Choose a project, review progress and pick up your work.':accessOpen?'Sign in to access your projects, saved applications and evidence.':'Bring applications, supporting documents and verification together. Keep every project moving with a clear view of what comes next.'}</p>
-        {!signedIn&&!accessOpen&&<div className="hero-actions"><button disabled={busy} onClick={start}>Sign in to get started <span aria-hidden="true">↗</span></button><button disabled={busy} className="hero-secondary" onClick={saved}>Open saved applications <span aria-hidden="true">→</span></button></div>}
+        <h1 id="home-title">{signedIn?'Your workspace.':accessOpen?(registering?'Create your account.':'Welcome back.'):<>Every application.<br/><span>A clearer way forward.</span></>}</h1>
+        <p>{signedIn?'Choose a project, review progress and pick up your work.':accessOpen?(registering?'Register and verify your email to get started. Your administrator will assign your project access.':'Sign in to access your projects, saved applications and evidence.'):'Bring applications, supporting documents and verification together. Keep every project moving with a clear view of what comes next.'}</p>
+        {!signedIn&&!accessOpen&&<div className="hero-actions"><button disabled={busy} onClick={start}>Sign in to get started <span aria-hidden="true">↗</span></button><button disabled={busy} className="hero-secondary" onClick={signup}>Create an account <span aria-hidden="true">→</span></button><button disabled={busy} className="hero-secondary" onClick={saved}>Open saved applications <span aria-hidden="true">→</span></button></div>}
         {!signedIn&&<button className="preview-link" disabled={busy} onClick={preview}>Explore the preview form <span aria-hidden="true">→</span></button>}
       </div>
       {!signedIn&&!accessOpen&&<div className="home-illustration" aria-hidden="true">

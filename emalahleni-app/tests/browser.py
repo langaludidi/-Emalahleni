@@ -223,9 +223,10 @@ try:
             page.route('**/sign-out', successful_sign_out)
             page.route('**/token*', api_token_response)
             project_role = {'value':'OFFICER'}
+            no_membership = {'value':False}
             def project_response(route):
                 project_tokens.append(route.request.headers.get('authorization'))
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':project_role['value']}]}))
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[] if no_membership['value'] else [{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':project_role['value']}]}))
             page.route('**/api/projects', project_response)
             def wait_for_project():
                 try:
@@ -234,6 +235,99 @@ try:
                     print(json.dumps({'status':page.get_by_role('status').all_text_contents(),'scriptErrors':errors}), flush=True)
                     page.screenshot(path=str(review / (label + '-project-load-failure.png')), full_page=True)
                     raise
+            # Sign-up is a separate account-creation flow. Registration must not
+            # authenticate an unverified account or assign project access.
+            signups = []
+            signup_error = {'value':True}
+            verification_attempts = []
+            def signup_response(route):
+                body = route.request.post_data_json
+                assert set(body) == {'name','email','password'}
+                signups.append(body)
+                if signup_error['value']:
+                    route.fulfill(status=409, content_type='application/json', body=json.dumps({'code':'USER_ALREADY_EXISTS','message':'An account already exists. Sign in or reset your password.'}))
+                else:
+                    route.fulfill(status=200, headers=auth_headers, content_type='application/json', body=json.dumps({'token':None,'user':{**auth_user,'email':body['email'],'emailVerified':False}}))
+            def verify_signup(route):
+                body = route.request.post_data_json
+                verification_attempts.append(body)
+                accepted = body['otp'] == '123456'
+                if accepted: signed_in['value'] = True  # Provider may create a session after verification.
+                route.fulfill(status=200 if accepted else 400, content_type='application/json', body=json.dumps({'status':True} if accepted else {'code':'INVALID_OTP','message':'The verification code is invalid or expired.'}))
+            page.route('**/sign-up/email', signup_response)
+            page.route('**/email-otp/verify-email', verify_signup)
+            page.get_by_role('button', name='Sign up', exact=True).click()
+            page.get_by_role('heading', name='Create your account', exact=True).wait_for()
+            page.get_by_label('Full name', exact=True).fill('Synthetic New User')
+            page.get_by_label('Email', exact=True).fill('new-synthetic@vectra-assure.invalid')
+            page.get_by_label('Password', exact=True).fill('short')
+            page.get_by_label('Confirm password', exact=True).fill('short')
+            create_account = page.get_by_role('button', name='Create account', exact=True)
+            expect(create_account).to_be_disabled()
+            page.get_by_label('Password', exact=True).fill('synthetic-registration-password')
+            page.get_by_label('Confirm password', exact=True).fill('different-password')
+            expect(create_account).to_be_disabled()
+            expect(page.get_by_text('The passwords do not match.', exact=True)).to_be_visible()
+            page.get_by_label('Confirm password', exact=True).fill('synthetic-registration-password')
+            before_codes = len(sent_types)
+            create_account.click()
+            expect(page.get_by_text('An account already exists. Sign in or reset your password.', exact=True)).to_be_visible()
+            expect(page.get_by_label('Password', exact=True)).to_have_value('')
+            expect(page.get_by_label('Confirm password', exact=True)).to_have_value('')
+            expect(page.get_by_label('Full name', exact=True)).to_have_value('Synthetic New User')
+            assert len(signups) == 1 and not project_tokens
+            signup_error['value'] = False
+            page.get_by_label('Password', exact=True).fill('synthetic-registration-password')
+            page.get_by_label('Confirm password', exact=True).fill('synthetic-registration-password')
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-sign-up.png')), full_page=True)
+            if label == 'mobile':
+                page.set_viewport_size({'width':320,'height':740})
+                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+                page.screenshot(path=str(review / 'small-mobile-sign-up.png'), full_page=True)
+                page.set_viewport_size({'width':width,'height':height})
+            create_account.click()
+            page.get_by_role('heading', name='Verify your email', exact=True).wait_for()
+            assert len(signups) == 2 and len(sent_types) == before_codes
+            assert not project_tokens and not signed_in['value']
+            expect(page.get_by_label('Password', exact=True)).to_have_value('')
+            page.get_by_role('button', name='Send verification code', exact=True).click()
+            page.get_by_label('Email verification code', exact=True).fill('000000')
+            page.get_by_role('button', name='Verify email', exact=True).click()
+            expect(page.get_by_text('The verification code is invalid or expired.', exact=True)).to_be_visible()
+            assert not project_tokens
+            page.get_by_label('Email verification code', exact=True).fill('123456')
+            page.get_by_role('button', name='Verify email', exact=True).click()
+            page.get_by_text('Email verified. Enter your password and sign in.', exact=True).wait_for()
+            assert verification_attempts[-1]['email'] == 'new-synthetic@vectra-assure.invalid'
+            assert sent_types[-1] == 'email-verification'
+            no_membership['value'] = True
+            page.get_by_label('Password', exact=True).fill('synthetic-registration-password')
+            page.get_by_role('button', name='Sign in', exact=True).click()
+            expect(page.get_by_text('Your account is ready. Project access is pending.', exact=True)).to_be_visible()
+            expect(page.get_by_role('button', name='New form', exact=True)).to_be_disabled()
+            expect(page.get_by_role('combobox', name='Existing draft', exact=True)).to_be_disabled()
+            assert not page.get_by_label('Password', exact=True).is_visible()
+            page.reload(wait_until='domcontentloaded')
+            expect(page.get_by_text('Your account is ready. Project access is pending.', exact=True)).to_be_visible()
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-project-access-pending.png')), full_page=True)
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Sign out', exact=True).click()
+            expect(page.get_by_role('heading', level=1)).to_contain_text('Every application.')
+            page.get_by_role('button', name='Sign up', exact=True).click()
+            expect(page.get_by_role('heading', name='Create your account', exact=True)).to_be_visible()
+            expect(page.get_by_label('Full name', exact=True)).to_be_focused()
+            expect(page.get_by_label('Password', exact=True)).to_have_value('')
+            page.get_by_role('button', name='Vectra Assure home', exact=True).click()
+            page.get_by_role('button', name='Create an account', exact=True).click()
+            expect(page.get_by_role('heading', name='Create your account', exact=True)).to_be_visible()
+            page.get_by_role('button', name='Back to sign in', exact=True).click()
+            assert not page.get_by_label('Full name', exact=True).is_visible()
+            expect(page.get_by_label('Password', exact=True)).to_have_value('')
+            no_membership['value'] = False
+            project_tokens.clear()
+            page.get_by_label('Email', exact=True).fill('synthetic@emalahleni.invalid')
             page.get_by_label('Password', exact=True).fill('unused-browser-test-password')
             page.get_by_role('button', name='Sign in', exact=True).click()
             wait_for_project()
