@@ -159,3 +159,12 @@ The restricted-role synthetic walkthrough reached `NEEDS_REVIEW` and successfull
 These are **baseline environment parity findings**, not permission changes made by Smart Capture. Existing non-Smart-Capture draft-creation code also attempts application INSERT and audit-event INSERT, so check the canonical runtime database and deploy migrations before assuming that flow works there. Do not issue blanket grants solely to make the test pass. Prefer an audited, project-scoped draft-creation transaction with least-privilege role permissions, or a reviewed SECURITY DEFINER function with explicit actor/project/role checks and immutable audit recording. Confirm actual production schema and grants separately **with permission**, without altering it.
 
 SC-021 additionally passed a negative test: editing a proposal while its import was still `EXTRACTING` was rejected by the database with `SMART_CAPTURE_PROPOSAL_UPDATE_DENIED`, and the test transaction rolled back. Confirmation, audit insertion and competing-confirmation integration tests remain blocked pending a synthetic environment matching the canonical database permissions.
+
+## SC-023 — additional synthetic abuse and duplicate-case tests (isolated branch)
+
+- Cross-project import insertion as Project A manager into Project B source was rejected by PostgreSQL RLS (not merely by the HTTP layer).
+- An unauthorised proposal edit while the import was still `EXTRACTING` was rejected by the SC-021 trigger.
+- A complete `NEEDS_REVIEW → COMMITTED` SQL test succeeded *only* within a savepoint using a temporary mock `audit_events` table and temporary worker `INSERT` grant on `applications`. It created an application, linked its import and emitted one audit event; rolling back the savepoint removed the mock, grants and application.
+- Two independently processed imports associated with the **same synthetic beneficiary folder** could not both be committed: PostgreSQL raised the `smart_capture_one_case_per_beneficiary_folder` uniqueness violation on the second commit and rolled back the whole test transaction. Follow-up counts were 2 baseline synthetic imports, 0 committed imports and 0 synthetic race-case applications.
+
+No actual Google Drive documents, beneficiary identities or production resources were involved. These tests validate isolated database rules, **not** queue wiring, real PDF scanning, production role grants, RLS under a live application runtime, or deployment authorisation.
