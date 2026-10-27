@@ -111,3 +111,9 @@ Only active project `ADMIN` or `MANAGER` may invoke it, and both processing feat
 **This is a safety mechanism, not an automatic retry.** The explicit retry endpoint does not allow `STALE_CLAIM_REQUIRES_REVIEW`; a human must investigate partial R2 quarantine, scanner status, provider charges and whether an extraction proposal was committed. `COMMITTING`, `COMMIT_UNCERTAIN`, `COMMITTED`, and `REJECTED` are never altered by this reconciliation.
 
 Remaining integration test: terminate the consumer at each processing stage and verify that a late worker cannot advance a row after the administrator marks it stale; verify source PDF and private quarantine retention policies. Avoid running this endpoint while an unusually long valid scan is still executing; adjust lease/heartbeat design before unattended bulk imports.
+
+## 9. Late-worker fencing limitations (SC-016)
+
+Stage transitions, failure marking and encrypted proposal commit now require the actor to retain an active claim. Once the SC-015 recovery clears `claimed_by` and `claimed_at`, an old worker cannot normally advance its previous state.
+
+**Important remaining race:** actor-only claim ownership is not a unique processing-attempt token. If the *same actor* retries and reclaims an import while an earlier worker is still running, the old worker may see a newly active claim with the same actor. Before production bulk use, add a random per-attempt claim token (or monotonically increasing attempt generation) to every state-changing SQL predicate and an integration test that races an old attempt against a new attempt by the same actor. This is a release blocker, not an acceptable residual risk.
