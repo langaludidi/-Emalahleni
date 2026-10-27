@@ -3,6 +3,8 @@
 BEGIN;
 ALTER TABLE public.smart_capture_imports
  ADD COLUMN claim_token uuid;
+-- This is a draft for a fresh, disabled Smart Capture installation only.
+-- Do not apply while any import is claimed; existing claims must first be reconciled.
 ALTER TABLE public.smart_capture_imports
  ADD CONSTRAINT smart_capture_claim_token_pair CHECK (
   (claimed_at IS NULL AND claimed_by IS NULL AND claim_token IS NULL)
