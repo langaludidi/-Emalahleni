@@ -16,10 +16,6 @@ CREATE TABLE public.smart_capture_proposals (
  updated_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY (project_id,import_id) REFERENCES public.smart_capture_imports(project_id,id)
 );
--- Needed for composite FK from encrypted proposal to import identity.
--- Add uniqueness to protect project isolation.
-ALTER TABLE public.smart_capture_imports
- ADD CONSTRAINT smart_capture_imports_project_id_id_key UNIQUE (project_id,id);
 ALTER TABLE public.smart_capture_proposals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.smart_capture_proposals FORCE ROW LEVEL SECURITY;
 CREATE POLICY sc_proposals_read ON public.smart_capture_proposals FOR SELECT USING (
