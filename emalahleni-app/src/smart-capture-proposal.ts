@@ -93,7 +93,8 @@ export function proposeCaseForm(input:unknown):ConfirmationResult{
   if(confirmed.has('household.dependants'))form.household.dependants=p.household.dependants;
   else reviewIssues.push('UNCONFIRMED_household.dependants');
  }
- if(Object.keys(p.extraFields).length)reviewIssues.push('SOURCE_FIELDS_OUTSIDE_CURRENT_FORM');
+ if(Object.keys(p.extraFields).length&&!confirmed.has('__extraFieldsReviewed'))
+  reviewIssues.push('SOURCE_FIELDS_OUTSIDE_CURRENT_FORM');
  for(const [key,source] of Object.entries(p.provenance)){
   if(source.state==='UNREADABLE'||source.state==='CONFLICT')blockingIssues.push('SOURCE_'+source.state+'_'+key);
  }
