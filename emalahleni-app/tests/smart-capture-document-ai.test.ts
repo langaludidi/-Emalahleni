@@ -16,7 +16,7 @@ test('SC-006 normalises synthetic form fields without inventing site observation
  assert.equal(result.applicant.surname,'Example');
  assert.equal(result.applicant.idNumber,'0000000000000');
  assert.equal(result.applicant.disability,null);
- assert.equal(result.sections.length,0);
+ assert.deepEqual(result.sections,[{type:'UNKNOWN',fromPage:1,toPage:1,status:'NOT_FOUND'}]);
  assert.equal(result.provenance['applicant.firstNames'].page,1);
 });
 test('SC-006 rejects invalid provider responses',()=>{
