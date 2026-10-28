@@ -74,6 +74,10 @@ export async function confirmSmartCaptureProposal(db:Database,actor:string,proje
  const check=proposeCaseForm({proposal,confirmedFields:confirmation.confirmedFields,confirmedUnknownBooleans:[]});
  if(check.blockingIssues.length||check.reviewIssues.length)
   throw new HttpError(422,'SMART_CAPTURE_REVIEW_INCOMPLETE');
+ // Never silently turn an incomplete applicant identity into a valid-looking blank draft.
+ if(!check.form.applicant.firstNames.trim()||!check.form.applicant.surname.trim()||
+  !check.form.applicant.idNumber)
+  throw new HttpError(422,'SMART_CAPTURE_APPLICANT_IDENTITY_INCOMPLETE');
  // Supporting-document PDFs from one beneficiary folder must not create
  // independent beneficiary records. Database unique index is the final guard.
  const [sameFolder]=await db.forActor(actor,[{query:`
