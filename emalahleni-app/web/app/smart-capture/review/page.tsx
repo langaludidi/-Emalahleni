@@ -50,7 +50,7 @@ export default function SmartCaptureReview(){
     if(live){setData(result);setProposal(result.proposal);}
     const bearer=await token();
     const pdf=await fetch(root+'/pdf',{headers:{Authorization:`Bearer ${bearer}`}});
-    if(pdf.ok){const blob=await pdf.blob();if(blob.type==='application/pdf'){blobUrl=URL.createObjectURL(blob);if(live)setPdfUrl(blobUrl);}}
+    if(pdf.ok){const blob=await pdf.blob();if(blob.type==='application/pdf'&&live){blobUrl=URL.createObjectURL(blob);setPdfUrl(blobUrl);}}
    }catch(e){if(live)setError(e instanceof Error?e.message:'Unable to open import');}
    finally{if(live)setBusy(false);}
   })();
@@ -86,6 +86,7 @@ export default function SmartCaptureReview(){
  }
  async function confirm(){
   if(!root||!data||!proposal)return;
+  if(!pdfUrl){setError('The original PDF must be available for comparison before a draft can be created.');return;}
   if(JSON.stringify(data.proposal)!==JSON.stringify(proposal)){setError('Save your corrections before creating the draft.');return;}
   if(!window.confirm('Confirm that you checked the selected values against the original PDF? This will create a DRAFT application, not approve the beneficiary.'))return;
   setBusy(true);setError('');setSuccess('');
@@ -161,7 +162,7 @@ export default function SmartCaptureReview(){
        <button disabled={busy} className={styles.secondary} onClick={()=>setProposal(p=>p?{...p,provenance:{...p.provenance,[key]:{...value,state:'CONFIRMED'}}}:p)}>Mark checked against PDF</button>
       </div>)}</div>}
       <div className={styles.actions}><button className={styles.secondary} disabled={busy||data?.state!=='NEEDS_REVIEW'} onClick={save}>Save corrections</button>
-       <button disabled={busy||data?.state!=='NEEDS_REVIEW'} onClick={confirm}>Create VectraSA draft</button>
+       <button disabled={busy||!pdfUrl||data?.state!=='NEEDS_REVIEW'} onClick={confirm}>Create VectraSA draft</button>
       </div>
       {data?.applicationId&&<div className={styles.notice}>Draft linked: <code>{data.applicationId}</code>. Continue assessment from the main <a href="/">VectraSA workspace</a>.</div>}
      </div>}
