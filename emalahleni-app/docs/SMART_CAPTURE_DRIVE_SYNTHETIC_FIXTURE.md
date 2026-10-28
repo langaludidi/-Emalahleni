@@ -74,3 +74,37 @@ If no isolated service-account key/identity exists, **stop** and provision it
 using the security-approved Google Cloud IAM workflow; do not copy a production
 key or substitute a personal Google account token. No runtime access has been
 verified by this change.
+
+## Preferred keyless desktop procedure (Google Cloud CLI)
+
+Use this only after confirming the correct **isolated Google Cloud project** and
+isolated service account email. Avoid JSON key downloads.
+
+1. Sign into `gcloud` as the authorised operator (`gcloud auth login`) and set
+   the isolated project explicitly (`gcloud config set project PROJECT_ID`).
+2. Verify that the operator has permission to impersonate only this isolated
+   service account (`roles/iam.serviceAccountTokenCreator` on that account).
+   Do not grant broad project-wide ownership or bind production identities.
+3. Share the **synthetic Drive test root only** with the isolated service
+   account's email as Viewer (including inherited child-folder access).
+4. From `emalahleni-app/` in the operator's trusted local terminal, mint the
+   short-lived token directly into an environment variable without showing it:
+   
+   ```sh
+   export SMART_CAPTURE_SYNTHETIC_DRIVE_ROOT=1jTDNtpo0KAp27vf4f6G6eBTYc8HKS2tA
+   export SMART_CAPTURE_SYNTHETIC_DRIVE_ACCESS_TOKEN="$(gcloud auth print-access-token \
+     --impersonate-service-account=ISOLATED_SERVICE_ACCOUNT_EMAIL \
+     --scopes=https://www.googleapis.com/auth/drive.metadata.readonly)"
+   node --import tsx scripts/check-smart-capture-drive-access.ts
+   unset SMART_CAPTURE_SYNTHETIC_DRIVE_ACCESS_TOKEN
+   ```
+
+5. Record only the script's redacted PASS/FAIL and timestamp. Never paste a token
+   or key into GitHub, ChatGPT, screenshots or shell history. Disable/revoke the
+   temporary impersonation grant if it was added solely for this test.
+
+If Google returns `403`, check (a) the operator's impersonation permission,
+(b) the isolated service account's **Viewer** access to the synthetic root and
+(c) whether domain sharing policies allow the isolated account. Do not grant
+access to the real beneficiary Drive folder. If an isolated account or safe
+impersonation is unavailable, remain BLOCKED rather than using production keys.
