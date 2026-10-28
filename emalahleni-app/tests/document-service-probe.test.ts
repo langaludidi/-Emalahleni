@@ -49,7 +49,7 @@ test('mismatched hashes, unclean scans, malformed OCR and incorrect identity ext
   const h=harness();h.state.scan=response;await assert.rejects(probeDocumentService(h.env),notReady);assert.equal(h.requests.length,2);
  }
  for(const makeResponse of [
-  (hash:string)=>Response.json({sha256:'a'.repeat(64),text}),
+  (_hash:string)=>Response.json({sha256:'a'.repeat(64),text}),
   (hash:string)=>Response.json({sha256:hash,text:'x'.repeat(16001)}),
   (hash:string)=>Response.json({sha256:hash,text,verified:true}),
   (hash:string)=>Response.json({sha256:hash,text:text.replace('SYNTHETIC TEST','OTHER PERSON')}),

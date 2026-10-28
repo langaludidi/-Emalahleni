@@ -19,5 +19,5 @@ export class Database {
     return results.slice(2) as Record<string, any>[][];
   }
 }
-export const writeRoles = ['ADMIN', 'OFFICER', 'FIELD_OFFICER', 'ASSESSOR', 'MANAGER'];
 export const writeScope = "EXISTS (SELECT 1 FROM public.project_memberships m WHERE m.project_id=a.project_id AND m.user_id=current_setting('app.actor_id',true) AND m.active AND m.role IN ('ADMIN','OFFICER','FIELD_OFFICER','ASSESSOR','MANAGER'))";
+

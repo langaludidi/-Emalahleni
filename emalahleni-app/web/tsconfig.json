@@ -7,6 +7,8 @@
       "esnext"
     ],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "noEmit": true,
     "esModuleInterop": true,
@@ -34,3 +36,4 @@
     "node_modules"
   ]
 }
+

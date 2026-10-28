@@ -1,3 +1,5 @@
+import {sha256Hex} from './hash';
+
 export interface PhotoProposal {latitude:number|null;longitude:number|null;date:string;dateSource:string;timezone:string;sha256:string;filename:string;}
 export function dateFromCamera(value:unknown):string{
  if(typeof value!=='string')return '';
@@ -14,6 +16,7 @@ export async function extractPhoto(file:File):Promise<PhotoProposal>{
  if(!['image/jpeg','image/png'].includes(file.type)||file.size>5*1024*1024)throw Error('Choose a JPEG or PNG photograph up to 5 MB.');
  const bytes=await file.arrayBuffer();const exifr=await import('exifr');
  const [tags,gps]=await Promise.all([exifr.parse(bytes,{pick:['DateTimeOriginal','CreateDate','GPSDateStamp','OffsetTimeOriginal'],reviveValues:false}).catch(()=>undefined),exifr.gps(bytes).catch(()=>undefined)]);
- const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
+ const hash=await sha256Hex(bytes);
  return proposalFromTags(tags,gps,hash,file.name);
 }
+

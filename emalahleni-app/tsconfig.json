@@ -12,6 +12,8 @@
       "node"
     ],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
@@ -22,3 +24,4 @@
     "tests/**/*.ts"
   ]
 }
+

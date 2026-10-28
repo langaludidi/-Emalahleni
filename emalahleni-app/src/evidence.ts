@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Database } from './database';
 import { HttpError, readBytes } from './http';
+import {sha256Hex} from './hash';
 import { MAX_UPLOAD,evidenceKinds,subtypes,evidenceWriterRoles,type ScanFailureReason } from './evidence-contracts';
 import {startupReasons} from '../scanner/startup-errors';
 export { MAX_UPLOAD,evidenceKinds,subtypes } from './evidence-contracts';
@@ -10,7 +11,7 @@ export interface EvidenceEnv { EVIDENCE_BUCKET?:R2Bucket; SCANNER?:Fetcher; SCAN
 const writer=`m.role IN ('${evidenceWriterRoles.join("','")}')`;
 const reviewer="m.role IN ('ADMIN','ASSESSOR')";
 const scope=(roles:string)=>`EXISTS (SELECT 1 FROM public.project_memberships m WHERE m.project_id=$1 AND m.user_id=current_setting('app.actor_id',true) AND m.active AND ${roles})`;
-export async function digest(bytes:Uint8Array){return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array(bytes).buffer))).map(v=>v.toString(16).padStart(2,'0')).join('');}
+export async function digest(bytes:Uint8Array){return sha256Hex(bytes);}
 export function validSignature(bytes:Uint8Array,type:string){
  if(type==='application/pdf')return new TextDecoder().decode(bytes.slice(0,5))==='%PDF-';
  if(type==='image/jpeg')return bytes[0]===255&&bytes[1]===216&&bytes[2]===255;

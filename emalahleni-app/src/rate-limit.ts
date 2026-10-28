@@ -1,4 +1,5 @@
 import {HttpError} from './http';
+import {sha256Hex} from './hash';
 
 export interface RateLimitEnv {
  ENABLE_API_RATE_LIMITS?:string;
@@ -10,7 +11,7 @@ async function check(binding:RateLimit|undefined,scope:string,identity:string){
  if(!binding)throw new HttpError(503,'RATE_LIMIT_SERVICE_UNAVAILABLE');
  // Never use caller-selected object keys, raw bearer tokens or personal details as keys.
  const bytes=new TextEncoder().encode(`emalahleni-api-staging:${scope}:${identity}`);
- const key=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
+ const key=await sha256Hex(bytes);
  let allowed:boolean;
  try{allowed=(await binding.limit({key})).success;}catch{throw new HttpError(503,'RATE_LIMIT_SERVICE_UNAVAILABLE');}
  if(!allowed)throw new HttpError(429,'TOO_MANY_REQUESTS',{'Retry-After':'60'});
@@ -27,3 +28,4 @@ export async function limitActorAction(request:Request,env:RateLimitEnv,actor:st
   await check(env.DOCUMENT_RATE_LIMITER,'document',actor);
  }
 }
+

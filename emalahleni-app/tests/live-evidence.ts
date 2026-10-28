@@ -8,7 +8,7 @@ const env:Env={DATABASE_URL:url.href,FORM_ENCRYPTION_KEY:Buffer.alloc(32,8).toSt
  SCANNER:{fetch:async(r:Request)=>{if(offline)throw Error('offline');return Response.json({sha256:await digest(new Uint8Array(await r.arrayBuffer())),verdict});}} as any};
 const handler=createHandler(async r=>r.headers.get('Test-Actor')??'unknown');
 async function call(actor:string,path:string,method='GET',data?:unknown,raw=false){const response=await handler(new Request('https://test.example'+path,{method,headers:{'Test-Actor':actor,'Content-Type':raw?'application/pdf':'application/json'},...(data===undefined?{}:{body:raw?new Uint8Array(data as Uint8Array).buffer:JSON.stringify(data)})}),env);const result=response.headers.get('Content-Type')?.includes('json')?await response.json():await response.arrayBuffer();return {status:response.status,result:result as any};}
-const project='20000000-0000-4000-8000-000000000001',other='20000000-0000-4000-8000-000000000002';
+const project='20000000-0000-4000-8000-000000000001';
 const created=await call('synthetic-officer-a',`/api/projects/${project}/applications`,'POST',{reference:'SYN-EVIDENCE-'+crypto.randomUUID().slice(0,8).toUpperCase(),form:blankForm()});assert.equal(created.status,201,JSON.stringify(created));const root=`/api/projects/${project}/applications/${created.result.id}`;
 const bytes=new TextEncoder().encode('%PDF-1.4\nSynthetic fixture');const hash=await digest(bytes);
 async function intent(){const r=await call('synthetic-officer-a',root+'/evidence','POST',{kind:'APPLICANT_ID',filename:'synthetic.pdf',contentType:'application/pdf',size:bytes.length,sha256:hash,dependantOrdinal:null});assert.equal(r.status,201,JSON.stringify(r));return r.result;}
