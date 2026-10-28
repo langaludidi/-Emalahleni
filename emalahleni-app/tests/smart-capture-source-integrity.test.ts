@@ -30,3 +30,16 @@ test('SC-I07 non-PDF bytes are rejected even with a matching checksum',async()=>
 test('SC-I07 truncated R2 reads fail closed before draft insertion',async()=>{
  await assert.rejects(verifySmartCaptureSourcePdf({bucket:bucket(bytes,bytes.length+1),project,importId,storageKey:key,contentSha256:await sha(bytes)}),{code:'SMART_CAPTURE_STORAGE_MISMATCH'});
 });
+
+test('SC-I07 missing R2 binding prevents a draft preflight',async()=>{
+ await assert.rejects(verifySmartCaptureSourcePdf({project,importId,storageKey:key,contentSha256:await sha(bytes)}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
+});
+test('SC-I07 invalid checksum metadata is rejected before storage access',async()=>{
+ let accessed=false;
+ const spy={get:async()=>{accessed=true;return null;}} as unknown as R2Bucket;
+ await assert.rejects(verifySmartCaptureSourcePdf({bucket:spy,project,importId,storageKey:key,contentSha256:'invalid'}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
+ assert.equal(accessed,false);
+});
+test('SC-I07 zero-length source is rejected before hashing',async()=>{
+ await assert.rejects(verifySmartCaptureSourcePdf({bucket:bucket(new Uint8Array()),project,importId,storageKey:key,contentSha256:await sha(new Uint8Array())}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
+});
