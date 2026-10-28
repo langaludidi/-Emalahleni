@@ -7,9 +7,23 @@
 - Cloudflare Worker deployed with queue consumer `vectra-smart-capture-neon-probe-test`, retry limit 3, batch 1, concurrency 1 and dead-letter queue `vectra-smart-capture-neon-probe-test-dlq`.
 - Worker deploy reported version `56439f67-8b10-4bf3-99f1-0174964c822b`.
 - Operator uploaded Cloudflare secret `SYNTHETIC_NEON_DATABASE_URL` through masked Wrangler prompt; success response received. Its value has not been independently inspected or connection-tested.
-- Worker configuration has `SYNTHETIC_NEON_PROBE_ENABLED=false` by default. **No successful live Worker-to-Neon probe is yet recorded.**
+- Worker source configuration has `SYNTHETIC_NEON_PROBE_ENABLED=false` by default. A live synthetic connectivity success was observed on 28 October 2026; see the evidence below. The operator's subsequent rollback of the dashboard flag has not yet been independently verified.
 - Neon project `noisy-pond-49029240`, database `vectra_preview`, branch `smart-capture-sc018-synthetic-isolated`, role `vectra_sc_synthetic_limited`. Role verified LOGIN, no BYPASSRLS, no role memberships, no application SELECT, synthetic probe SELECT allowed.
 - All work is on draft PR #11, branch `docs/smart-capture-handoff`; no merge or live app deployment authorised.
+
+## Recorded live synthetic test — 28 October 2026
+
+**Outcome: PASS for isolated queue → Worker → restricted Neon SELECT.** Evidence supplied in operator's Cloudflare dashboard screenshots:
+
+- Queue: `vectra-smart-capture-neon-probe-test` (Active). Worker consumer: `vectra-smart-capture-neon-probe`.
+- Consumer configuration: batch size 1; max retries 3; max concurrency 1; DLQ `vectra-smart-capture-neon-probe-test-dlq`.
+- Exactly 1 message ingested, 1 acknowledged, 0 retried, backlog 0; the displayed billable operations count was 3.
+- Worker Observability: **`Synthetic Neon probe passed`** at **2026-10-28 08:30:47.393 SAST** (06:30:47.393 UTC). Dashboard reported 1 success and 0 errors.
+- Encrypted `SYNTHETIC_NEON_DATABASE_URL` secret present (value not disclosed). The synthetic-only enable flag was temporarily displayed as `true`.
+- **Open rollback verification:** confirm `SYNTHETIC_NEON_PROBE_ENABLED=false` is saved in the isolated Worker's dashboard after the test; screenshots do not establish this yet.
+- **Not independently established:** secret connection string contents, deployed Worker version at test time, DLQ count unchanged, or a complete end-to-end application/OCR workflow.
+
+Evidence provenance: Cloudflare screenshots provided by the operator in the ChatGPT Smart Capture conversation on 28 October 2026; no production credentials or beneficiary data recorded.
 
 ## Before enabling (desktop operator action)
 
