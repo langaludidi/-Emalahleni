@@ -39,3 +39,38 @@ Capture only the redacted PASS/FAIL output and timestamp for the acceptance ledg
 On failure, grant the isolated service account read access **only to the synthetic
 test root** and necessary descendants; never widen access to the real beneficiary
 folder. Test environment and its credentials must remain separate from production.
+
+## 28 October 2026 — Work credential blocker and recovery
+
+ChatGPT Work inspected the script at commit `86afc6f` but could not run it:
+`SMART_CAPTURE_SYNTHETIC_DRIVE_ACCESS_TOKEN` was unavailable. **No Google API
+request was made, so no permission error or service-account access result exists.**
+
+Commit `ad3e2368` removes the need to mint a separate token externally:
+the script can now call the application's existing `googleServiceToken` using
+**isolated service-account credentials injected into its execution environment**.
+It requests only the `drive.metadata.readonly` scope. The script also continues
+to accept a pre-minted short-lived token as an alternative, but refuses both
+credential modes simultaneously. No secrets, JWT, token, file contents or
+provider error bodies should be printed.
+
+Safe execution requirements:
+
+1. Confirm a **separate isolated Google service account** exists and has read-only
+   access limited to synthetic test root `1jTDNtpo0KAp27vf4f6G6eBTYc8HKS2tA`.
+   Do not grant access to the real beneficiary Drive tree.
+2. In a local or isolated runner, securely inject the existing key and email
+   as `SMART_CAPTURE_SYNTHETIC_DRIVE_PRIVATE_KEY` and
+   `SMART_CAPTURE_SYNTHETIC_DRIVE_CLIENT_EMAIL`. Do not expose them to a PR,
+   build log, GitHub workflow file, ChatGPT chat or shell history.
+3. Run `node --import tsx scripts/check-smart-capture-drive-access.ts` from
+   `emalahleni-app/`, with `SMART_CAPTURE_SYNTHETIC_DRIVE_ROOT` set to the
+   synthetic test root if used.
+4. Record the script's PASS or FAIL, an UTC timestamp, and the **non-sensitive**
+   Google service-account email only if acceptable to the operator's security
+   policy. On access denial, do not change production permissions.
+
+If no isolated service-account key/identity exists, **stop** and provision it
+using the security-approved Google Cloud IAM workflow; do not copy a production
+key or substitute a personal Google account token. No runtime access has been
+verified by this change.
