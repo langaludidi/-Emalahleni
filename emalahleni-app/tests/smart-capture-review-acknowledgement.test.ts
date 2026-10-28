@@ -28,3 +28,11 @@ test('SC-I05 requires source PDF preview before allowing draft confirmation',()=
  assert.match(code,/if\(!pdfUrl\)\{setError\('The original PDF must be available/);
  assert.match(code,/disabled=\{busy\|\|!pdfUrl\|\|data\?\.state!=='NEEDS_REVIEW'\} onClick=\{confirm\}/);
 });
+
+test('SC-I05 API refuses draft confirmation without valid quarantined source PDF metadata',()=>{
+ const code=readFileSync(new URL('../src/smart-capture-review.ts',import.meta.url),'utf8');
+ const confirm=code.split('export async function confirmSmartCaptureProposal')[1]?.split('export async function downloadSmartCapturePdf')[0]??'';
+ assert.match(confirm,/row\.content_sha256/);
+ assert.match(confirm,/validSmartCaptureQuarantineKey\(row\.storage_key,project,id\)/);
+ assert.match(confirm,/SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE/);
+});
