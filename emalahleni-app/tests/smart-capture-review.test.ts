@@ -149,7 +149,7 @@ test('SC-I07 stale officer review version cannot create a synthetic draft',async
   {SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
    SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key,
    EVIDENCE_BUCKET:{get:async()=>{storageReads++;return null;}} as unknown as R2Bucket}),
-  {code:'SMART_CAPTURE_REVIEW_VERSION_CONFLICT'});
+  {code:'SMART_CAPTURE_REVIEW_CONFLICT'});
  assert.equal(writes,0);
  assert.equal(storageReads,0);
 });
