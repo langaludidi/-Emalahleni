@@ -112,3 +112,22 @@ test('SC-I07 tampered quarantined PDF cannot create a beneficiary draft',async()
   {code:'SMART_CAPTURE_STORAGE_MISMATCH'});
  assert.equal(mutated,false);
 });
+
+test('SC-I07 complete officer review fails closed when private PDF storage is unbound',async()=>{
+ const ciphertext=await sealSmartCaptureProposal(completeProposal,key,project,importId);
+ let writes=0;
+ const db={forActor:async(_actor:string,statements:Array<{query:string}>)=>{
+  const q=statements[0].query;
+  if(q.includes('FROM public.project_memberships'))return [[{role:'OFFICER'}]];
+  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:0,state:'NEEDS_REVIEW',application_id:null,
+   content_sha256:'a'.repeat(64),storage_key:`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`}]];
+  writes++;throw Error('unexpected database write');
+ }} as unknown as Database;
+ const confirmedFields=['applicant.firstNames','applicant.surname','applicant.idNumber',
+  'applicant.maritalStatus','applicant.disability','applicant.disaster',
+  'applicant.propertyOwned','applicant.propertySold','household.incomeSource'];
+ await assert.rejects(confirmSmartCaptureProposal(db,'actor',project,importId,{version:0,confirmedFields},
+  {SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+   SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
+ assert.equal(writes,0);
+});
