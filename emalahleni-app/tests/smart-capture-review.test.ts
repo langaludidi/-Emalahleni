@@ -60,3 +60,32 @@ test('SC-009 API refuses draft confirmation when source PDF quarantine metadata 
    SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key}),
   {code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
 });
+
+test('SC-I07 verified synthetic PDF permits exactly one audited draft handoff',async()=>{
+ const pdf=new TextEncoder().encode('%PDF-1.4 synthetic source');
+ const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',Uint8Array.from(pdf)))).map(x=>x.toString(16).padStart(2,'0')).join('');
+ const ciphertext=await sealSmartCaptureProposal(completeProposal,key,project,importId);
+ const storageKey=`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`;
+ let commits=0,checks=0;
+ const db={forActor:async(_actor:string,statements:Array<{query:string}>)=>{
+  const q=statements[0].query;
+  if(q.includes('FROM public.project_memberships'))return [[{role:'OFFICER'}]];
+  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:0,state:commits?'COMMITTED':'NEEDS_REVIEW',
+   application_id:commits?'00000000-0000-4000-8000-000000000003':null,content_sha256:digest,storage_key:storageKey}]];
+  if(q.includes('JOIN public.smart_capture_imports existing'))return [[]];
+  if(q.includes('WITH claimed AS')){commits++;assert.match(q,/INSERT INTO public.audit_events/);return [[{application_id:'00000000-0000-4000-8000-000000000003'}]];}
+  throw Error('unexpected query: '+q);
+ }} as unknown as Database;
+ const env={SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+  SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key,
+  EVIDENCE_BUCKET:{get:async()=>{checks++;return {size:pdf.length,arrayBuffer:async()=>pdf.buffer.slice(pdf.byteOffset,pdf.byteOffset+pdf.byteLength)};}} as unknown as R2Bucket};
+ const confirmedFields=['applicant.firstNames','applicant.surname','applicant.idNumber',
+  'applicant.maritalStatus','applicant.disability','applicant.disaster',
+  'applicant.propertyOwned','applicant.propertySold','household.incomeSource'];
+ const first=await confirmSmartCaptureProposal(db,'actor',project,importId,{version:0,confirmedFields},env);
+ assert.equal(first.state,'COMMITTED');
+ const repeated=await confirmSmartCaptureProposal(db,'actor',project,importId,{version:0,confirmedFields},env);
+ assert.equal(repeated.applicationId,first.applicationId);
+ assert.equal(commits,1);
+ assert.equal(checks,1);
+});
