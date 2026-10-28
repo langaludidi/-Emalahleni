@@ -22,3 +22,11 @@ test('SC-I07 wrong import quarantine key fails before reading storage',async()=>
 test('SC-I07 oversized PDF fails before hashing',async()=>{
  await assert.rejects(verifySmartCaptureSourcePdf({bucket:bucket(bytes,5*1024*1024+1),project,importId,storageKey:key,contentSha256:await sha(bytes)}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
 });
+
+test('SC-I07 non-PDF bytes are rejected even with a matching checksum',async()=>{
+ const payload=new TextEncoder().encode('synthetic plain text, not a PDF');
+ await assert.rejects(verifySmartCaptureSourcePdf({bucket:bucket(payload),project,importId,storageKey:key,contentSha256:await sha(payload)}),{code:'SMART_CAPTURE_STORAGE_MISMATCH'});
+});
+test('SC-I07 truncated R2 reads fail closed before draft insertion',async()=>{
+ await assert.rejects(verifySmartCaptureSourcePdf({bucket:bucket(bytes,bytes.length+1),project,importId,storageKey:key,contentSha256:await sha(bytes)}),{code:'SMART_CAPTURE_STORAGE_MISMATCH'});
+});
