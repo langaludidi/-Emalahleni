@@ -50,6 +50,17 @@ export const confirmationSchema=z.object({
  confirmedFields:z.array(z.string()).max(100),
 }).strict();
 export type ConfirmationInput=z.input<typeof confirmationSchema>;
+export function validSouthAfricanIdChecksum(id:string):boolean{
+ if(!/^\d{13}$/.test(id))return false;
+ // SA identity numbers use a Luhn check digit. Do not infer citizenship or age from OCR.
+ let sum=0;
+ for(let i=id.length-1,position=0;i>=0;i--,position++){
+  let digit=Number(id[i]);
+  if(position%2===1){digit*=2;if(digit>9)digit-=9;}
+  sum+=digit;
+ }
+ return sum%10===0;
+}
 export type ConfirmationResult={form:CaseForm;blockingIssues:string[];reviewIssues:string[]};
 export function proposeCaseForm(input:unknown):ConfirmationResult{
  const data=confirmationSchema.parse(input);
@@ -68,6 +79,7 @@ export function proposeCaseForm(input:unknown):ConfirmationResult{
  const id=p.applicant.idNumber;
  if(id!==null){
   if(!/^\d{13}$/.test(id))blockingIssues.push('ID_FORMAT_INVALID');
+  else if(!validSouthAfricanIdChecksum(id))blockingIssues.push('ID_CHECKSUM_INVALID');
   else if(confirmed.has('applicant.idNumber'))form.applicant.idNumber=id;
   else reviewIssues.push('UNCONFIRMED_applicant.idNumber');
  }
