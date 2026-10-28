@@ -11,3 +11,31 @@ Created 27 October 2026 with the user's authorisation for synthetic-only testing
 - **No real beneficiary PDFs may be read or indexed.** Preserve the existing approved root and existing beneficiary folders unchanged.
 
 Next acceptance steps: verify isolated service-account access to this folder; confirm discovery imports only synthetic PDF metadata; invoke safe scanner and Document AI test configuration; verify encrypted proposal and officer draft in isolated Neon; record full evidence and rollback. Do not claim E2E completion before all stages pass.
+
+## SC-I07 live read-only service-account acceptance (28 Oct 2026)
+
+The ChatGPT-connected Google Drive account has re-listed the test root and confirmed
+**exactly one** child folder, with **exactly one** 27,213-byte PDF inside it.
+This is not proof of access from the Worker service account.
+
+Run the repository script using a short-lived OAuth token minted for the **isolated
+Smart Capture service account**, not the user's interactive Google session:
+
+```sh
+cd emalahleni-app
+# Obtain token securely through the isolated service account's existing
+# credential workflow. Do not print it, paste it into ChatGPT, or commit it.
+SMART_CAPTURE_SYNTHETIC_DRIVE_ACCESS_TOKEN="$ISOLATED_DRIVE_ACCESS_TOKEN" \
+  node --import tsx scripts/check-smart-capture-drive-access.ts
+```
+
+The script strictly checks the synthetic root, beneficiary folder, PDF ID and
+expected file size using Google Drive metadata GET requests. It does not download
+PDFs or access Neon, Cloudflare, or production ingestion. It refuses unexpected
+folders, files or pagination rather than broadening scope. A passing check means
+**service-account Drive discovery only**, not OCR or an end-to-end draft.
+
+Capture only the redacted PASS/FAIL output and timestamp for the acceptance ledger.
+On failure, grant the isolated service account read access **only to the synthetic
+test root** and necessary descendants; never widen access to the real beneficiary
+folder. Test environment and its credentials must remain separate from production.
