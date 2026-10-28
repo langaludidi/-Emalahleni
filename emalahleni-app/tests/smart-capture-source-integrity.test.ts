@@ -5,7 +5,7 @@ const project='00000000-0000-4000-8000-000000000001';
 const importId='00000000-0000-4000-8000-000000000002';
 const key=`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`;
 const bytes=new TextEncoder().encode('%PDF-1.4 synthetic test only');
-const sha=async(data:Uint8Array)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',data))).map(x=>x.toString(16).padStart(2,'0')).join('');
+const sha=async(data:Uint8Array)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',Uint8Array.from(data)))).map(x=>x.toString(16).padStart(2,'0')).join('');
 const bucket=(data:Uint8Array|null,size=data?.length??0)=>({get:async()=>data?{size,arrayBuffer:async()=>data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength)}:null}) as unknown as R2Bucket;
 test('SC-I07 verified synthetic source PDF allows draft preflight',async()=>{
  await verifySmartCaptureSourcePdf({bucket:bucket(bytes),project,importId,storageKey:key,contentSha256:await sha(bytes)});
