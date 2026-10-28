@@ -14,7 +14,7 @@ export async function verifySmartCaptureSourcePdf(input:{
  const stored=await bucket.get(storageKey);
  if(!stored||stored.size<5||stored.size>5*1024*1024)
   throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
- const bytes=await stored.arrayBuffer();
+ const bytes=new Uint8Array(await stored.arrayBuffer());
  if(bytes.byteLength!==stored.size||bytes.byteLength<5||
   bytes[0]!==37||bytes[1]!==80||bytes[2]!==68||bytes[3]!==70||bytes[4]!==45)
   throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
