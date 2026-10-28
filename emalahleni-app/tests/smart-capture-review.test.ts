@@ -12,13 +12,13 @@ const completeProposal={
  },household:{incomeSource:'UNEMPLOYED' as const,dependants:[]},
  extraFields:{},provenance:{},sections:[]
 };
-async function mockDb(role:string|null,state='NEEDS_REVIEW',applicationId:string|null=null):Promise<Database>{
+async function mockDb(role:string|null,state='NEEDS_REVIEW',applicationId:string|null=null,sourcePdfAvailable=true):Promise<Database>{
  const ciphertext=await sealSmartCaptureProposal(completeProposal,key,project,importId);
  return {forActor:async(_actor:string,statements:Array<{query:string}>)=>{
   if(statements.length!==1)throw Error('unexpected DB transaction');
   const q=statements[0].query;
   if(q.includes('FROM public.project_memberships'))return [role?[{role}]:[]];
-  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:0,state,application_id:applicationId,content_sha256:null,storage_key:null}]];
+  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:0,state,application_id:applicationId,content_sha256:sourcePdfAvailable?'a'.repeat(64):null,storage_key:sourcePdfAvailable?`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`:null}]];
   throw Error('unexpected mutation');
  }} as unknown as Database;
 }
@@ -50,4 +50,13 @@ test('SC-009 a completed import returns existing application rather than creatin
   {SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
    SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key});
  assert.deepEqual(result,{applicationId,state:'COMMITTED'});
+});
+
+test('SC-009 API refuses draft confirmation when source PDF quarantine metadata is absent',async()=>{
+ const db=await mockDb('OFFICER','NEEDS_REVIEW',null,false);
+ await assert.rejects(confirmSmartCaptureProposal(db,'actor',project,importId,
+  {version:0,confirmedFields:[]},
+  {SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+   SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key}),
+  {code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
 });
