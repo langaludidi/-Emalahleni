@@ -7,4 +7,6 @@ import './features.test.ts';
 import './reliability.test.ts';
 import './dashboard.test.ts';
 import './projects.test.ts';
+import './hash.test.ts';
+import './http.test.ts';
 

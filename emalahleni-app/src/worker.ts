@@ -2,10 +2,10 @@ import { z, ZodError } from 'zod';
 import { actorFrom } from './auth';
 import { Database, writeScope } from './database';
 import { encryptForm, decryptForm } from './crypto';
-import { formSchema, blankForm, type Evidence, type DepartmentReview } from './contracts';
+import { formSchema, type Evidence, type DepartmentReview } from './contracts';
 import { evaluate } from './rules';
-import { HttpError } from './http';
-import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured, type EvidenceEnv } from './evidence';
+import { HttpError, readBytes } from './http';
+import { createIntent, upload, rescan, review, listEvidence, download, uploadsConfigured } from './evidence';
 import {reviewDepartment} from './department-review';
 import {exportSnapshot} from './export-snapshot';
 import {readIdDocument,idReadingConfigured,type IdReadingEnv} from './id-document';
@@ -23,17 +23,7 @@ const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store
 const json = (data: unknown, status = 200, extra:Record<string,string>={}) => new Response(JSON.stringify(data), { status, headers:{...headers,...extra} });
 async function body(request: Request) {
   if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new HttpError(415, 'JSON_REQUIRED');
-  const reader = request.body?.getReader();
-  if (!reader) throw new HttpError(400, 'BODY_REQUIRED');
-  let length = 0; const chunks: Uint8Array[] = [];
-  while (true) {
-    const { value, done } = await reader.read(); if (done) break;
-    length += value.byteLength;
-    if (length > 32768) { await reader.cancel(); throw new HttpError(413, 'BODY_TOO_LARGE'); }
-    chunks.push(value);
-  }
-  const bytes = new Uint8Array(length); let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  const bytes = await readBytes(request, 32768);
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { throw new HttpError(400, 'INVALID_JSON'); }
 }
 const saveSchema = z.object({ version: z.number().int().min(0), form: formSchema }).strict();

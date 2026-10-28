@@ -1,4 +1,6 @@
+// The PDF module also runs through the Node test runner's JSX transform.
 import React from 'react';
+import {sha256Hex} from '../../src/hash';
 import type {ExportSnapshot} from '../../src/export-contracts';
 import {reviewCurrent} from '../../src/rules';
 import {packEvidence} from '../../src/export-contracts';
@@ -7,7 +9,7 @@ export async function summaryPdf(snapshot:ExportSnapshot):Promise<Blob>{
  const styles=StyleSheet.create({page:{padding:36,fontFamily:'Helvetica',fontSize:10,lineHeight:1.5},title:{fontSize:20,marginBottom:8,color:'#0A2540'},draft:{fontSize:10,color:'#9a492e',marginBottom:15},heading:{fontSize:13,marginTop:16,marginBottom:6},row:{flexDirection:'row',marginBottom:5},label:{width:135,color:'#52667A'},value:{flex:1},issue:{marginBottom:5},footer:{position:'absolute',bottom:20,left:36,right:36,fontSize:8,color:'#52667A'}});
  const row=(label:string,value:unknown)=><View style={styles.row}><Text style={styles.label}>{label}</Text><Text style={styles.value}>{value===null||value===undefined||value===''?'Not recorded':String(value)}</Text></View>;
  const a=snapshot.form.applicant,h=snapshot.form.household,s=snapshot.form.site;
- const document=<Document title={`DRAFT - ${snapshot.reference} - Vectra Assure`} author="Vectra Solutions" subject="Draft verification summary — not submission approval">
+ const document:React.ReactElement<React.ComponentProps<typeof Document>>=<Document title={`DRAFT - ${snapshot.reference} - Vectra Assure`} author="Vectra Solutions" subject="Draft verification summary — not submission approval">
  <Page size="A4" style={styles.page}><Text style={styles.title}>Beneficiary verification summary</Text><Text style={styles.draft}>{snapshot.preview?'PREVIEW — UNSAVED FORM':'DRAFT — NOT APPROVED FOR SUBMISSION'}</Text>
  {row('Case reference',snapshot.reference)}{row('Recorded version',snapshot.version)}{row('Generated (UTC)',snapshot.generatedAt)}
  <Text style={styles.heading}>Applicant and household</Text>{row('Applicant',`${a.firstNames} ${a.surname}`)}{row('ID number',a.idNumber)}{row('Contact',a.phone)}{row('Marital status',a.maritalStatus)}{a.maritalStatus==='MARRIED'&&row('Spouse',a.spouseName)}{row('Income declaration',h.incomeSource)}{row('Disability declared',a.disability?'Yes':'No')}{row('Disaster declared',a.disaster?'Yes':'No')}
@@ -30,7 +32,7 @@ export async function draftPack(snapshot:ExportSnapshot,getFile:(id:string)=>Pro
  let size=0;
  for(const e of evidence){
   const bytes=await getFile(e.id);size+=bytes.byteLength;if(bytes.byteLength>5*1024*1024||size>25*1024*1024)throw Error('This draft pack exceeds the export size limit.');
-  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');if(hash!==e.sha256)throw Error('An evidence file changed. Refresh the case before exporting.');
+  const hash=await sha256Hex(bytes);if(hash!==e.sha256)throw Error('An evidence file changed. Refresh the case before exporting.');
   if(e.content_type==='application/pdf'){
    let donor;try{donor=await PDFDocument.load(bytes);donor.getForm().flatten();}catch{throw Error(`Unable to include ${e.filename}. Check for password protection or an unsupported PDF form.`);}
    if(result.getPageCount()+donor.getPageCount()>200)throw Error('This draft pack exceeds the 200-page export limit.');

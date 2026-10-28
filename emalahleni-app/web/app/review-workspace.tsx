@@ -1,5 +1,6 @@
 'use client';
 import { useEffect,useRef,useState } from 'react';
+import {sha256Hex} from '../../src/hash';
 import { evidenceKinds,subtypes,MAX_UPLOAD,evidenceWriterRoles,scanFailureReasons } from '../../src/evidence-contracts';
 import {reviewCurrent} from '../../src/rules';
 import { dohsSections } from '../../src/contracts';
@@ -30,8 +31,9 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
  const idDocuments=documents.filter(document=>document.kind==='APPLICANT_ID'&&document.malware_status==='CLEAN'&&['PENDING_REVIEW','VERIFIED'].includes(document.status));
  const selectedId=idDocuments.find(document=>document.id===idDocument)?.id??idDocuments[0]?.id??'';
  const reviewableDocuments=documents.filter(document=>(document.status==='PENDING_REVIEW'||(document.status==='VERIFIED'&&!reviewCurrent(document,formVersion)))&&document.malware_status==='CLEAN');
+ const reviewableIds=new Set(reviewableDocuments.map(document=>document.id));
  const selectedReview=documents.find(document=>document.id===selected);
- const selectedReviewable=reviewableDocuments.some(document=>document.id===selected);
+ const selectedReviewable=reviewableIds.has(selected);
  const reviewDirty=!!(note||confirmed||certified||date)||decision!=='VERIFIED'||subtype!==reviewSubtype(selectedReview);
  const certificationNeeded=!!selectedReview&&['APPLICANT_ID','SPOUSE_ID'].includes(selectedReview.kind);
  useEffect(()=>{onBusyChange(busy);return()=>onBusyChange(false);},[busy,onBusyChange]);
@@ -116,7 +118,7 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
   try{
    if(uploadsEnabled!==true)throw new Error('DOCUMENT_UPLOADS_NOT_CONFIGURED');
    if(!file)throw new Error('Choose a PDF, JPEG or PNG first.');if(file.size>MAX_UPLOAD)throw new Error('The maximum file size is 5 MB.');
-   const bytes=await file.arrayBuffer();const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
+   const bytes=await file.arrayBuffer();const sha256=await sha256Hex(bytes);
    const intent=await api(root+'/evidence','POST',{kind,filename:file.name,contentType:file.type,size:file.size,sha256,dependantOrdinal:kind==='DEPENDANT_ID_OR_BIRTH_CERT'?Number(ordinal):null});
    const result=await sendFile(intent.uploadPath,bytes,file.type);setFile(null);if(fileInput.current)fileInput.current.value='';changed();
    const outcome=result.malware_status==='CLEAN'?'Uploaded and scanned. Assessor review is still required.':result.malware_status==='INFECTED'?'The scanner rejected this file. It remains quarantined.':scanFailureMessage(result.scanFailure);
@@ -136,7 +138,7 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
   <button className="secondary" disabled={busy||evidenceState==='loading'} onClick={()=>run(async()=>{await refresh();})}>Refresh evidence and reviews</button>
   {evidenceState==='loading'&&<p className="hint" role="status">Loading recorded evidence…</p>}
   {evidenceState==='error'&&<p className="hint" role="alert">Unable to load recorded evidence. Refresh to check whether a document is saved.</p>}
-  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {d.status==='VERIFIED'&&!reviewCurrent(d,formVersion)?'review required after form change':label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy||evidenceState!=='ready'} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{reviewableDocuments.some(document=>document.id===d.id)&&canReview&&<button disabled={busy||evidenceState!=='ready'} onClick={()=>openReview(d.id)}>Review document</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||evidenceState!=='ready'||uploadsEnabled!==true} onClick={()=>run(()=>retryScan(d))}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&captureEditable&&<button className="secondary" disabled={busy||evidenceState!=='ready'} onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div>{scanMessages[d.id]&&<p className="hint upload-feedback" role={scanMessages[d.id].error?'alert':'status'} aria-live="polite">{scanMessages[d.id].message}</p>}</li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
+  <ul className="evidence-register">{documents.map(d=><li key={d.id}><strong>{d.filename}</strong><span>{label(d.kind)} · {d.status==='VERIFIED'&&!reviewCurrent(d,formVersion)?'review required after form change':label(d.status)} · {label(d.malware_status)}</span><div className="row-actions">{d.malware_status==='CLEAN'&&<button className="secondary" disabled={busy||evidenceState!=='ready'} onClick={()=>run(()=>download(root+`/evidence/${d.id}/download`,d.filename))}>Download</button>}{reviewableIds.has(d.id)&&canReview&&<button disabled={busy||evidenceState!=='ready'} onClick={()=>openReview(d.id)}>Review document</button>}{d.status==='PENDING_SCAN'&&canUpload&&<button disabled={busy||evidenceState!=='ready'||uploadsEnabled!==true} onClick={()=>run(()=>retryScan(d))}>Retry scan</button>}{d.kind==='SITE_PHOTO'&&d.status==='VERIFIED'&&canUpload&&captureEditable&&<button className="secondary" disabled={busy||evidenceState!=='ready'} onClick={()=>{photo(d.id);setMessage('Photograph linked to the form. Save the draft to record it.');}}>Use as site photograph</button>}</div>{scanMessages[d.id]&&<p className="hint upload-feedback" role={scanMessages[d.id].error?'alert':'status'} aria-live="polite">{scanMessages[d.id].message}</p>}</li>)}</ul>{evidenceState==='ready'&&!documents.length&&<p className="hint">No documents recorded for this case.</p>}
   {canUpload&&<fieldset aria-label="Upload evidence" disabled={busy||uploadsEnabled!==true}><h3>Upload evidence</h3>
    {uploadsEnabled!==true&&<div className="notice" role="status"><strong>{evidenceState==='loading'?'Checking upload availability…':uploadsEnabled===false?'Document uploads are unavailable':'Upload availability could not be confirmed'}</strong><p>{uploadsEnabled===false?'The document scanning service must be connected before uploads can be accepted. Choosing a file on your device does not add it to the case.':'Use Refresh evidence and reviews to check availability before choosing a file.'}</p></div>}
    <p className="hint">Upload the file to add it to this case. After a clean scan, use Read ID details to review suggestions for the applicant form.</p>

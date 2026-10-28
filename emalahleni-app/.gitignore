@@ -7,3 +7,7 @@ dist/
 web/.next/
 web/out/
 *.tsbuildinfo
+review/
+__pycache__/
+*.py[cod]
+

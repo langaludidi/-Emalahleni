@@ -3,6 +3,7 @@ import {decryptForm} from './crypto';
 import {formSchema,type DepartmentReview} from './contracts';
 import {evaluate} from './rules';
 import {HttpError} from './http';
+import {sha256Hex} from './hash';
 import type {ExportSnapshot,PackEvidence} from './export-contracts';
 export async function exportSnapshot(db:Database,actor:string,project:string,id:string,key:string):Promise<ExportSnapshot>{
  const [cases,evidence,reviews]=await db.forActor(actor,[
@@ -14,7 +15,7 @@ export async function exportSnapshot(db:Database,actor:string,project:string,id:
  const form=formSchema.parse(await decryptForm(cases[0].fields_ciphertext,key,project,id));
  const generatedAt=new Date().toISOString();const readiness=evaluate(form,evidence as PackEvidence[],reviews as DepartmentReview[],generatedAt.slice(0,10),cases[0].version);
  const data={applicationId:id,projectId:project,reference:cases[0].reference,version:cases[0].version,form,readiness,evidence:evidence as PackEvidence[],reviews:reviews as ExportSnapshot['reviews']};
- const bytes=new TextEncoder().encode(JSON.stringify(data));const fingerprint=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(v=>v.toString(16).padStart(2,'0')).join('');
+ const bytes=new TextEncoder().encode(JSON.stringify(data));const fingerprint=await sha256Hex(bytes);
  return {...data,generatedAt,fingerprint,preview:false};
 }
 
