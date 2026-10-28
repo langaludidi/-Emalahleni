@@ -18,3 +18,13 @@ test('SC-I05 switching imports clears previous beneficiary PDF, data and approva
  assert.match(code,/useEffect\(\(\)=>\{[\s\S]*?setData\(null\);setProposal\(null\);setChecked\(\[\]\);setPdfUrl\(''\);setPage\(1\)/);
  assert.match(code,/return\(\)=>\{live=false;if\(blobUrl\)URL\.revokeObjectURL\(blobUrl\)/);
 });
+
+test('SC-I05 does not create an object URL after the import review was unmounted',()=>{
+ const code=readFileSync(new URL('../web/app/smart-capture/review/page.tsx',import.meta.url),'utf8');
+ assert.match(code,/blob\.type==='application\/pdf'&&live\)\{blobUrl=URL\.createObjectURL\(blob\);setPdfUrl\(blobUrl\)/);
+});
+test('SC-I05 requires source PDF preview before allowing draft confirmation',()=>{
+ const code=readFileSync(new URL('../web/app/smart-capture/review/page.tsx',import.meta.url),'utf8');
+ assert.match(code,/if\(!pdfUrl\)\{setError\('The original PDF must be available/);
+ assert.match(code,/disabled=\{busy\|\|!pdfUrl\|\|data\?\.state!=='NEEDS_REVIEW'\} onClick=\{confirm\}/);
+});
