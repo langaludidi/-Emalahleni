@@ -224,9 +224,30 @@ try:
             page.route('**/token*', api_token_response)
             project_role = {'value':'OFFICER'}
             no_membership = {'value':False}
+            project_creation_enabled = {'value':False}
+            created_projects = {}
+            project_creation_requests = []
+            uncertain_creation = {'value':False}
             def project_response(route):
                 project_tokens.append(route.request.headers.get('authorization'))
-                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':[] if no_membership['value'] else [{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':project_role['value']}]}))
+                if route.request.method == 'POST':
+                    value = route.request.post_data_json
+                    project_creation_requests.append(value)
+                    if not project_creation_enabled['value']:
+                        route.fulfill(status=403, content_type='application/json', body=json.dumps({'error':'PROJECT_CREATION_DENIED'}))
+                    elif value['code'] == 'SYN-TAKEN':
+                        route.fulfill(status=409, content_type='application/json', body=json.dumps({'error':'PROJECT_CODE_EXISTS'}))
+                    else:
+                        created_projects.setdefault(value['id'],{'id':value['id'],'name':value['name'],'code':value['code'],'role':'ADMIN'})
+                        if uncertain_creation['value']:
+                            uncertain_creation['value'] = False
+                            route.fulfill(status=503, content_type='application/json', body=json.dumps({'error':'SERVICE_UNAVAILABLE'}))
+                        else:
+                            route.fulfill(status=200, content_type='application/json', body=json.dumps({'project':created_projects[value['id']],'created':False}))
+                    return
+                projects_result = [] if no_membership['value'] else [{'id':'synthetic-project','name':'Synthetic staging','code':'SYN-UI','role':project_role['value']}]
+                organisations = [{'id':'10000000-0000-4000-8000-000000000001','name':'Synthetic organisation'}] if project_creation_enabled['value'] else []
+                route.fulfill(status=200, content_type='application/json', body=json.dumps({'projects':projects_result+list(created_projects.values()),'projectCreation':{'organisations':organisations}}))
             page.route('**/api/projects', project_response)
             def wait_for_project():
                 try:
@@ -350,6 +371,56 @@ try:
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             page.locator('summary', has_text='Account').click()
             # A stateful API double proves new captures never update the previous draft.
+            assert not page.get_by_role('button', name='New housing project', exact=True).is_visible()
+            project_creation_enabled['value'] = True
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Refresh projects', exact=True).click()
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='New housing project', exact=True).click()
+            expect(page.get_by_label('Project name', exact=True)).to_be_focused()
+            assert page.get_by_role('button', name='Create project', exact=True).is_disabled()
+            page.get_by_label('Project name', exact=True).fill('Synthetic new housing')
+            page.get_by_label('Project code', exact=True).fill('BAD CODE')
+            assert page.get_by_role('button', name='Create project', exact=True).is_disabled()
+            assert not project_creation_requests
+            page.get_by_label('Project code', exact=True).fill('syn-taken')
+            page.get_by_role('button', name='Create project', exact=True).click()
+            expect(page.locator('.new-project [role="alert"]')).to_contain_text('already in use')
+            expect(page.get_by_label('Project name', exact=True)).to_have_value('Synthetic new housing')
+            page.get_by_label('Project code', exact=True).fill('syn-new')
+            page.get_by_label('Client or authority (optional)', exact=True).fill('Synthetic client')
+            page.get_by_label('Location (optional)', exact=True).fill('Synthetic municipality')
+            if label == 'mobile': page.set_viewport_size({'width':320,'height':740})
+            assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
+            page.screenshot(path=str(review / (label + '-new-project.png')), full_page=True)
+            uncertain_creation['value'] = True
+            page.get_by_role('button', name='Create project', exact=True).click()
+            expect(page.locator('.new-project [role="alert"]')).to_contain_text('could not be confirmed')
+            assert page.get_by_label('Project name', exact=True).is_disabled()
+            page.get_by_role('button', name='Retry project creation', exact=True).click()
+            expect(page.get_by_role('heading', name='Create a housing project', exact=True)).not_to_be_visible()
+            assert project_creation_requests[-1] == project_creation_requests[-2]
+            assert len(created_projects) == 1
+            new_project_id = next(iter(created_projects))
+            expect(page.get_by_role('combobox', name='Project', exact=True)).to_have_value(new_project_id)
+            assert page.get_by_role('combobox', name='Project', exact=True).locator('option', has_text='Synthetic new housing · ADMIN').count() == 1
+            page.reload(wait_until='domcontentloaded')
+            wait_for_project()
+            expect(page.get_by_role('combobox', name='Project', exact=True).locator('option', has_text='Synthetic new housing · ADMIN')).to_have_count(1)
+            page.get_by_role('button', name='New housing project', exact=True).click()
+            page.get_by_label('Project name', exact=True).fill('Synthetic unsaved setup')
+            page.once('dialog', lambda dialog: dialog.dismiss())
+            page.get_by_role('button', name='Cancel project setup', exact=True).click()
+            expect(page.get_by_label('Project name', exact=True)).to_have_value('Synthetic unsaved setup')
+            page.once('dialog', lambda dialog: dialog.accept())
+            page.get_by_role('button', name='Cancel project setup', exact=True).click()
+            if label == 'mobile': page.set_viewport_size({'width':width,'height':height})
+            project_creation_enabled['value'] = False
+            created_projects.clear()
+            page.locator('summary', has_text='Account').click()
+            page.get_by_role('button', name='Refresh projects', exact=True).click()
+            page.locator('summary', has_text='Account').click()
+            expect(page.get_by_role('button', name='New housing project', exact=True)).not_to_be_visible()
             stored_cases = {}
             writes = []
             fail_save = {'value':False}

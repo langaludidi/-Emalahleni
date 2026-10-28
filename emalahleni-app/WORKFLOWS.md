@@ -15,6 +15,16 @@ Vectra Assure remains a synthetic-data development app. Moving it to a company s
 
 ## Capture to evidence
 
+### Create a housing project
+
+Authorised project creators use **Home → New housing project**. Enter a project name and a unique code; client/authority and location are optional. Creation opens the new project with an empty dashboard and grants the creator `ADMIN` access to that project. It uses the existing housing form, evidence requirements and provisional readiness rules. Existing projects, applications and memberships are preserved.
+
+Project creation is a separate, explicitly assigned capability within an organisation. Registering, holding a capture role or administering one project does not automatically grant it. Project creators cannot see other projects without an active membership. Other team members still need their own project/role assignments through the controlled operator setup process; this release does not add a team-management screen.
+
+If creation cannot be confirmed, use **Retry project creation** with the retained details. The same request returns the original project without duplicating its membership or audit entry. A duplicate code must be changed. Cancelling or leaving unsaved project setup asks before discarding it.
+
+### Capture an application
+
 1. Existing users sign in. New users choose **Sign up**, create an account, request the email code and verify it, then sign in. A project administrator must assign their project and role; registration alone grants no case access. Users waiting for assignment can choose **Account → Refresh projects** after access is granted.
 2. Choose the assigned project and start a new form or reopen the existing draft.
 3. Use a unique synthetic reference beginning `SYN-`. Capture can be incomplete, but formats, dates and coordinates must be valid for saving.
@@ -85,6 +95,8 @@ Domain onboarding and cutover checks are in [DOMAIN_SETUP.md](DOMAIN_SETUP.md).
 ## Review-version schema release
 
 Apply `migrations/20261026_review_form_version.sql` to the existing staging database before deploying the matching Worker. It adds two nullable version columns and preserves existing reviews, audit history, stored files and scan results. Do not backfill legacy decisions as current: their original checked version is unknown. The previous Worker ignores these additive columns, so code rollback does not require a schema rollback. A later roll-forward again requires fresh review for decisions written by older code.
+
+Housing-project creation additionally requires `migrations/20261028_housing_project_creation.sql` before the matching Worker. It adds project profile/provenance fields, organisation-scoped creator permissions and two narrowly granted database functions. The Worker retains read-only direct access to projects/memberships; creation, initial ADMIN membership and audit logging occur atomically inside the checked function. Enable a creator only for an explicitly authorised account and organisation; never seed personal account IDs or credentials into repository migrations. Revoking creation permission prevents new projects without removing existing project memberships. Code rollback leaves these additive fields/functions and created projects intact.
 
 The CI PostgreSQL service executes production review SQL to check both orderings of simultaneous draft saves and reviews, competing assessor writes, departmental timestamp conflicts, legacy re-review and infected-file denial. The service database is disposable and guarded by environment assertions.
 

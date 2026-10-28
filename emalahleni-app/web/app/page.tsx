@@ -13,6 +13,8 @@ import {idFieldsSchema,validSaId,type IdFields} from '../../src/id-reading';
 import HomeScreen from './home-screen';
 import Dashboard from './project-dashboard';
 import SplashScreen from './splash-screen';
+import NewProject from './new-project';
+import type {HousingProject,ProjectOrganisation} from '../../src/projects';
 import type {ProjectDashboard} from '../../src/dashboard';
 import {evidenceWriterRoles} from '../../src/evidence-contracts';
 
@@ -43,6 +45,9 @@ export default function Page() {
   const [email,setEmail] = useState(''); const [password,setPassword] = useState('');
   const [registering,setRegistering] = useState(false);const [signupName,setSignupName] = useState('');const [signupConfirm,setSignupConfirm] = useState('');
   const [projectsLoaded,setProjectsLoaded] = useState(false);
+  const [projectOrganisations,setProjectOrganisations]=useState<ProjectOrganisation[]>([]);
+  const [projectCreationOpen,setProjectCreationOpen]=useState(false);
+  const [projectBusy,setProjectBusy]=useState(false),[projectDraftDirty,setProjectDraftDirty]=useState(false);
   const [verificationNeeded,setVerificationNeeded] = useState(false);
   const [verificationSent,setVerificationSent] = useState(false); const [verificationCode,setVerificationCode] = useState('');
   const [recovering,setRecovering] = useState(false); const [resetSent,setResetSent] = useState(false);
@@ -52,7 +57,7 @@ export default function Page() {
   const [reference,setReference] = useState('SYN-'); const [status,setStatus] = useState('Sign in to access your applications, or explore the preview form.');
   const [savedSnapshot,setSavedSnapshot] = useState(()=>formSnapshot(blankForm(),'SYN-'));
   const unsaved = formSnapshot(form,reference)!==savedSnapshot;
-  const [busy,setBusy] = useState(false); const [documentBusy,setDocumentBusy] = useState(false); const [pendingDocuments,setPendingDocuments] = useState(false); const working=busy||documentBusy;
+  const [busy,setBusy] = useState(false); const [documentBusy,setDocumentBusy] = useState(false); const [pendingDocuments,setPendingDocuments] = useState(false); const working=busy||documentBusy||projectBusy;
   const [readiness,setReadiness] = useState<Readiness|null>(null);
   const [auth] = useState(() => createAuthClient(authUrl));
   const dirty = () => setReadiness(null);
@@ -87,7 +92,9 @@ export default function Page() {
     const blob=pack?await exports.draftPack(data,async id=>{const token=await accessToken();const response=await fetch(`/api/projects/${data.projectId}/applications/${data.applicationId}/evidence/${id}/download`,{headers:{Authorization:`Bearer ${token}`}});if(!response.ok)throw new Error('An evidence document is no longer available. Refresh before exporting.');return response.arrayBuffer();},async()=>{const current=await api(`/api/projects/${data.projectId}/applications/${data.applicationId}/export`);return current.fingerprint;}):await exports.summaryPdf(data);
     const objectUrl=URL.createObjectURL(blob),link=document.createElement('a');link.href=objectUrl;link.download=`${data.reference}-${pack?'draft-pack':'verification-summary'}.pdf`;link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);setStatus(pack?'Draft pack generated from verified, clean evidence. Submission remains unapproved.':'Verification summary generated.');
   }
-  async function loadProjects() { setProjectsLoaded(false);const result=await api('/api/projects');setProjects(result.projects);setProjectsLoaded(true);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
+  async function loadProjects() { setProjectsLoaded(false);const result=await api('/api/projects');setProjects(result.projects);setProjectOrganisations(result.projectCreation?.organisations??[]);setProjectsLoaded(true);setStatus(result.projects.length ? 'Choose your project to begin.' : 'Signed in. No active project membership is assigned to this account.'); }
+  function openProjectCreation(){if(!confirmDiscard('Start project setup'))return;clearCapture();setProjectCreationOpen(true);requestAnimationFrame(()=>document.getElementById('new-project-name')?.focus());}
+  function projectCreated(created:HousingProject){setProjects(previous=>[...previous.filter(p=>p.id!==created.id),created].sort((a,b)=>a.name.localeCompare(b.name)));clearCapture();setProject(created.id);setCases([]);setProjectCreationOpen(false);setDashboard(null);setStatus(`Housing project created: ${created.name}. Start a new application when ready.`);}
   useEffect(()=> {
     let live=true;
     // Session lookup must not trap a visitor behind a loading screen on a poor connection.
@@ -103,7 +110,7 @@ export default function Page() {
     api(`/api/projects/${project}/dashboard`).then(result=>{if(live)setDashboard({projectId:project,data:result});}).catch(()=>{if(live)setDashboardError('The project overview could not be loaded. Your applications are still available above.');}).finally(()=>{if(live)setDashboardLoading(false);});
     return()=>{live=false;};
   },[view,mode,user,project,dashboardRevision]);
-  useEffect(()=>{if(!unsaved&&!documentBusy&&!pendingDocuments)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[unsaved,documentBusy,pendingDocuments]);
+  useEffect(()=>{if(!unsaved&&!documentBusy&&!pendingDocuments&&!projectDraftDirty&&!projectBusy)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();event.returnValue='';};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[unsaved,documentBusy,pendingDocuments,projectDraftDirty,projectBusy]);
   function showVerification() { setVerificationNeeded(true);setVerificationSent(false);setVerificationCode('');setStatus('Verify your email before signing in. Request a code below.'); }
   async function signIn() {
     try {
@@ -139,7 +146,7 @@ export default function Page() {
     if(!confirmDiscard('Log out'))return;
     const result=await auth.signOut();if(result.error)throw new Error(result.error.message || 'Unable to sign out. Please try again.');
     setUser('');setPassword('');setRegistering(false);setSignupName('');setSignupConfirm('');setProjectsLoaded(false);setRecovering(false);clearRecovery();setVerificationNeeded(false);setVerificationSent(false);setVerificationCode('');
-    setProjects([]);setCases([]);setProject('');setDashboard(null);setConnectionOpen(false);clearCapture();setView('home');setMode('connected');setStatus('Signed out.');
+    setProjects([]);setProjectOrganisations([]);setProjectCreationOpen(false);setCases([]);setProject('');setDashboard(null);setConnectionOpen(false);clearCapture();setView('home');setMode('connected');setStatus('Signed out.');
   }
   async function sendVerification() {
     const result=await auth.emailOtp.sendVerificationOtp({email,type:'email-verification'});
@@ -177,14 +184,14 @@ export default function Page() {
     if(result.error)throw new Error(result.error.message || 'The reset code is invalid or expired. Request a new code and try again.');
     setRecovering(false);clearRecovery();setPassword('');setStatus('Password updated. Enter your new password and sign in.');
   }
-  function confirmDiscard(action:string) { return !(unsaved||pendingDocuments) || window.confirm(`You have unsaved form or document changes. ${action} without saving them? Choose Cancel to keep the current form.`); }
+  function confirmDiscard(action:string) { return !(unsaved||pendingDocuments||projectDraftDirty) || window.confirm(`You have unsaved form, document or project details. ${action} without saving them? Choose Cancel to keep your work.`); }
   function clearCapture() { const empty=blankForm();setActive(null);setForm(empty);setReference('SYN-');setSavedSnapshot(formSnapshot(empty,'SYN-'));setReadiness(null);setStep(0);setResumeAvailable(false); }
   function home() { setResumeAvailable(true);setView('home');setStatus(unsaved||pendingDocuments?'Your unsaved form and document input are kept in this tab. Choose Resume form to continue.':'Choose Resume form, open a saved draft or start a new form.');window.scrollTo({top:0}); }
-  function newForm() { if(!confirmDiscard('Start a new form'))return;clearCapture();setView('capture');setStatus(mode==='preview'?'New preview form · changes stay in this tab.':'New form. Enter a synthetic reference before saving.');window.scrollTo({top:0}); }
+  function newForm() { if(!confirmDiscard('Start a new form'))return;setProjectCreationOpen(false);clearCapture();setView('capture');setStatus(mode==='preview'?'New preview form · changes stay in this tab.':'New form. Enter a synthetic reference before saving.');window.scrollTo({top:0}); }
   async function changeMode(next:'preview'|'connected') {
     if(next===mode){if(next==='preview')setView('capture');else setConnectionOpen(true);if(user&&next==='connected')await loadProjects();return true;}
     if(!confirmDiscard('Switch workspace'))return false;
-    clearCapture();setProject('');setCases([]);setMode(next);setView(next==='preview'?'capture':'home');
+    setProjectCreationOpen(false);clearCapture();setProject('');setCases([]);setMode(next);setView(next==='preview'?'capture':'home');
     setConnectionOpen(next==='connected');setStatus(next==='preview'?'Preview mode · changes stay in this tab.':'Sign in to access your applications.');if(user&&next==='connected')await loadProjects();return true;
   }
   async function openWorkspace(action:'new'|'saved') {
@@ -200,11 +207,11 @@ export default function Page() {
   }
   async function selectProject(id:string) {
     if(!confirmDiscard('Change project'))return;
-    const result=id?await api(`/api/projects/${id}/applications`):{applications:[]};clearCapture();setProject(id);setCases(result.applications);setView('home');setStatus(id?'Project selected. Start a form or open a saved application.':'Choose a project to begin.');
+    const result=id?await api(`/api/projects/${id}/applications`):{applications:[]};setProjectCreationOpen(false);clearCapture();setProject(id);setCases(result.applications);setView('home');setStatus(id?'Project selected. Start a form or open a saved application.':'Choose a project to begin.');
   }
   async function loadCase(id:string) {
     if(!confirmDiscard('Open another draft'))return;
-    const result=await api(`/api/projects/${project}/applications/${id}`);clearCapture();setActive(result);setForm(result.form);setReference(result.reference);setSavedSnapshot(formSnapshot(result.form,result.reference));setView('capture');setStatus(`Loaded ${result.reference} · version ${result.version}`);window.scrollTo({top:0});
+    const result=await api(`/api/projects/${project}/applications/${id}`);setProjectCreationOpen(false);clearCapture();setActive(result);setForm(result.form);setReference(result.reference);setSavedSnapshot(formSnapshot(result.form,result.reference));setView('capture');setStatus(`Loaded ${result.reference} · version ${result.version}`);window.scrollTo({top:0});
   }
   async function save():Promise<Case> {
     if(!project)throw new Error('Choose a project first.');
@@ -259,10 +266,12 @@ export default function Page() {
         <button disabled={resetCode.length!==6||newPassword.length<8||newPassword.length>128||newPassword!==confirmPassword} onClick={()=>run(resetPassword)}>Set new password</button></>}
       </fieldset>}
       {mode==='connected'&&!user&&verificationNeeded&&<fieldset aria-label="Email verification" disabled={working}><h3>Verify your email</h3><p>Request a code for {email}, then enter it here.</p><button className="secondary" disabled={!email} onClick={()=>run(sendVerification)}>{verificationSent?'Send a new verification code':'Send verification code'}</button>{verificationSent&&<><Field label="Email verification code"><input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={verificationCode} onChange={e=>setVerificationCode(e.target.value.replace(/\D/g,'').slice(0,6))}/></Field><button disabled={verificationCode.length!==6} onClick={()=>run(verifyEmail)}>Verify email</button></>}</fieldset>}
-      {mode==='connected'&&user&&projectsLoaded&&projects.length===0&&<div className="notice" role="status"><strong>Your account is ready. Project access is pending.</strong><p>Ask your project administrator to assign your account to a project and role, then choose Refresh projects from the Account menu. Registering does not grant access to existing applications or evidence.</p></div>}
+      {mode==='connected'&&user&&projectsLoaded&&projects.length===0&&projectOrganisations.length===0&&<div className="notice" role="status"><strong>Your account is ready. Project access is pending.</strong><p>Ask your project administrator to assign your account to a project and role, then choose Refresh projects from the Account menu. Registering does not grant access to existing applications or evidence.</p></div>}
       {mode==='connected'&&user&&<div className="grid"><Field label="Project"><select id="project-picker" value={project} disabled={working} onChange={e=>run(()=>selectProject(e.target.value))}><option value="">Choose a project</option>{projects.map(p=><option key={p.id} value={p.id}>{p.name} · {p.role}</option>)}</select></Field><Field label="Existing draft"><select id="draft-picker" value={active?.id??''} disabled={working||!project} onChange={e=>e.target.value?run(()=>loadCase(e.target.value)):newForm()}><option value="">New draft</option>{cases.map(c=><option key={c.id} value={c.id}>{c.reference}</option>)}</select></Field></div>}
     </section>}
     {view==='home'?<>
+    {mode==='connected'&&user&&projectsLoaded&&projectOrganisations.length>0&&<section className="card project-setup-actions"><div><h2>Housing projects</h2><p>Create a separate workspace for each housing project.</p></div><button disabled={working||projectCreationOpen} onClick={openProjectCreation}>New housing project</button></section>}
+    {mode==='connected'&&user&&projectCreationOpen&&<NewProject organisations={projectOrganisations} busy={busy||documentBusy} create={input=>api('/api/projects','POST',input)} created={projectCreated} cancel={()=>{if(confirmDiscard('Cancel project setup'))setProjectCreationOpen(false);}} onBusyChange={setProjectBusy} onPendingChange={setProjectDraftDirty}/>}
     {(user||resumeAvailable)&&<section className={`card home-card ${mode==='connected'&&user&&project?'compact-home-actions':''}`} aria-label="Applications"><h2>Applications</h2><p>{mode==='preview'?'Preview forms stay in this tab.':!user?'Sign in above to access your saved drafts.':!project?'Choose a project above to start a form or open a saved draft.':'Start a new form or choose an existing draft above. Saved drafts remain available when you start another form.'}</p>{resumeAvailable&&<p className="hint">{unsaved||pendingDocuments?'Your current form has unsaved changes and is kept in this tab.':active?`Current draft: ${active.reference}`:'Your current form is available to resume.'}</p>}<div className="home-actions">{resumeAvailable&&<button disabled={working} onClick={()=>{setView('capture');window.scrollTo({top:0});}}>Resume form</button>}<button className="secondary" disabled={working||(mode==='connected'&&(!user||!project||!canCapture))} onClick={newForm}>New form</button>{user&&<button className="secondary" disabled={working} onClick={()=>run(signOut)}>Log out</button>}</div></section>}
     {mode==='connected'&&user&&project&&<Dashboard key={project} data={dashboard?.projectId===project?dashboard.data:null} loading={dashboardLoading} error={dashboardError} projectName={projects.find(p=>p.id===project)?.name??'Project'} refresh={()=>setDashboardRevision(value=>value+1)} open={id=>run(()=>loadCase(id))} busy={working}/>}
     </>:null}
