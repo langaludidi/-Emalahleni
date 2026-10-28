@@ -131,3 +131,25 @@ test('SC-I07 complete officer review fails closed when private PDF storage is un
    SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key}),{code:'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE'});
  assert.equal(writes,0);
 });
+
+test('SC-I07 stale officer review version cannot create a synthetic draft',async()=>{
+ const ciphertext=await sealSmartCaptureProposal(completeProposal,key,project,importId);
+ let writes=0,storageReads=0;
+ const db={forActor:async(_actor:string,statements:Array<{query:string}>)=>{
+  const q=statements[0].query;
+  if(q.includes('FROM public.project_memberships'))return [[{role:'OFFICER'}]];
+  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:2,state:'NEEDS_REVIEW',application_id:null,
+   content_sha256:'a'.repeat(64),storage_key:`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`}]];
+  writes++;throw Error('unexpected database write');
+ }} as unknown as Database;
+ const confirmedFields=['applicant.firstNames','applicant.surname','applicant.idNumber',
+  'applicant.maritalStatus','applicant.disability','applicant.disaster',
+  'applicant.propertyOwned','applicant.propertySold','household.incomeSource'];
+ await assert.rejects(confirmSmartCaptureProposal(db,'actor',project,importId,{version:1,confirmedFields},
+  {SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+   SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key,
+   EVIDENCE_BUCKET:{get:async()=>{storageReads++;return null;}} as unknown as R2Bucket}),
+  {code:'SMART_CAPTURE_REVIEW_VERSION_CONFLICT'});
+ assert.equal(writes,0);
+ assert.equal(storageReads,0);
+});
