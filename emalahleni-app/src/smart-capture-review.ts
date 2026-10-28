@@ -69,6 +69,15 @@ export async function confirmSmartCaptureProposal(db:Database,actor:string,proje
  if(!row.content_sha256||!/^[a-f0-9]{64}$/.test(row.content_sha256)||
   !row.storage_key||!validSmartCaptureQuarantineKey(row.storage_key,project,id))
   throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
+ // A metadata row alone does not prove the source PDF is still present or intact.
+ // Verify the exact quarantined bytes before permitting a new draft commit.
+ if(!env.EVIDENCE_BUCKET)throw new HttpError(503,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
+ const sourcePdf=await env.EVIDENCE_BUCKET.get(row.storage_key);
+ if(!sourcePdf||sourcePdf.size>5*1024*1024)throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
+ const sourceBytes=await sourcePdf.arrayBuffer();
+ const sourceHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBytes)))
+  .map(byte=>byte.toString(16).padStart(2,'0')).join('');
+ if(sourceHash!==row.content_sha256)throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
  const proposal=extractionProposalSchema.parse(await openSmartCaptureProposal(
   row.ciphertext,env.SMART_CAPTURE_ENCRYPTION_KEY,project,id));
  const check=proposeCaseForm({proposal,confirmedFields:confirmation.confirmedFields,confirmedUnknownBooleans:[]});
