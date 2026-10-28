@@ -18,7 +18,7 @@ export async function verifySmartCaptureSourcePdf(input:{
  if(bytes.byteLength!==stored.size||bytes.byteLength<5||
   bytes[0]!==37||bytes[1]!==80||bytes[2]!==68||bytes[3]!==70||bytes[4]!==45)
   throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
- const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)))
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',Uint8Array.from(bytes))))
   .map(byte=>byte.toString(16).padStart(2,'0')).join('');
  if(hash!==contentSha256)throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
 }
