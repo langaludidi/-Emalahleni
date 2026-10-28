@@ -89,3 +89,26 @@ test('SC-I07 verified synthetic PDF permits exactly one audited draft handoff',a
  assert.equal(commits,1);
  assert.equal(checks,1);
 });
+
+test('SC-I07 tampered quarantined PDF cannot create a beneficiary draft',async()=>{
+ const ciphertext=await sealSmartCaptureProposal(completeProposal,key,project,importId);
+ let mutated=false;
+ const db={forActor:async(_actor:string,statements:Array<{query:string}>)=>{
+  const q=statements[0].query;
+  if(q.includes('FROM public.project_memberships'))return [[{role:'OFFICER'}]];
+  if(q.includes('JOIN public.smart_capture_proposals'))return [[{ciphertext,review_version:0,state:'NEEDS_REVIEW',application_id:null,
+   content_sha256:'a'.repeat(64),storage_key:`smart-capture/quarantine/${project}/${importId}/00000000-0000-4000-8000-000000000004/original.pdf`}]];
+  if(q.includes('WITH claimed AS')){mutated=true;return [[]];}
+  throw Error('unexpected query: '+q);
+ }} as unknown as Database;
+ const pdf=new TextEncoder().encode('%PDF-1.4 altered synthetic source');
+ const env={SMART_CAPTURE_ENABLED:'true',SMART_CAPTURE_PROCESSING_ENABLED:'true',
+  SMART_CAPTURE_ENCRYPTION_KEY:key,FORM_ENCRYPTION_KEY:key,
+  EVIDENCE_BUCKET:{get:async()=>({size:pdf.length,arrayBuffer:async()=>pdf.buffer.slice(pdf.byteOffset,pdf.byteOffset+pdf.byteLength)})} as unknown as R2Bucket};
+ const confirmedFields=['applicant.firstNames','applicant.surname','applicant.idNumber',
+  'applicant.maritalStatus','applicant.disability','applicant.disaster',
+  'applicant.propertyOwned','applicant.propertySold','household.incomeSource'];
+ await assert.rejects(confirmSmartCaptureProposal(db,'actor',project,importId,{version:0,confirmedFields},env),
+  {code:'SMART_CAPTURE_STORAGE_MISMATCH'});
+ assert.equal(mutated,false);
+});
