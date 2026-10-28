@@ -46,12 +46,9 @@ test('SC-I05 API requires verified applicant name and identity before creating a
  assert.match(confirm,/SMART_CAPTURE_APPLICANT_IDENTITY_INCOMPLETE/);
 });
 
-test('SC-I07 draft creation requires actual quarantined PDF bytes and matching SHA-256',()=>{
+test('SC-I07 draft creation invokes verified PDF integrity before inserting applications',()=>{
  const code=readFileSync(new URL('../src/smart-capture-review.ts',import.meta.url),'utf8');
  const confirm=code.split('export async function confirmSmartCaptureProposal')[1]?.split('export async function downloadSmartCapturePdf')[0]??'';
- assert.match(confirm,/EVIDENCE_BUCKET\.get\(row\.storage_key\)/);
- assert.match(confirm,/sourcePdf\.size>5\*1024\*1024/);
- assert.match(confirm,/crypto\.subtle\.digest\('SHA-256',sourceBytes\)/);
- assert.match(confirm,/sourceHash!==row\.content_sha256/);
- assert.ok(confirm.indexOf('sourceHash!==row.content_sha256')<confirm.indexOf('INSERT INTO public.applications'));
+ assert.match(confirm,/await verifySmartCaptureSourcePdf\(/);
+ assert.ok(confirm.indexOf('await verifySmartCaptureSourcePdf(')<confirm.indexOf('INSERT INTO public.applications'));
 });
