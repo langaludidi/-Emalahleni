@@ -27,7 +27,7 @@ The Codex-built VectraSA application is the system of record for beneficiary cas
 | Phase | Goal | Evidence / exit criteria | Status |
 |---|---|---|---|
 | P0 — Baseline | Reconcile current app routes, schema, DoHS transitions, UI and Smart Capture code | Versioned architecture, contract inventory, known gaps, approved scope | **In progress** |
-| P1 — Isolated infrastructure | Verify least-privilege Neon, queue, DLQ, audit transaction and secrets | Cloudflare-to-Neon single synthetic read; SQL role denial; logs/metrics | **Partial** |
+| P1 — Isolated infrastructure | Verify least-privilege Neon, queue, DLQ, audit transaction and secrets | Cloudflare-to-Neon single synthetic read; SQL role denial; logs/metrics | **Verified synthetic connectivity; broader infrastructure integration remains partial** |
 | P2 — Document pipeline | Safe discovery, revision checks, PDF classification, malware scan, AI extraction and encrypted proposal | Synthetic PDFs, negative-path tests, no invented values | **Partial** |
 | P3 — Codex app integration | Officer list, document viewer, corrections, validation, confirmed draft in existing VectraSA case view | Authenticated end-to-end synthetic browser/API test | **Not verified** |
 | P4 — Resilience/security | Retry/DLQ, idempotency, cross-project isolation, audit, retention, recovery | Automated tests + reviewed defect register | **Partial** |
@@ -66,14 +66,14 @@ The Codex-built VectraSA application is the system of record for beneficiary cas
 | Synthetic DLQ test | One message reached dedicated DLQ | Not production processor |
 | Isolated Neon draft + audit SQL transaction | Passed; rolled back | Synthetic fixture, not canonical migration |
 | Neon restricted probe role | Confirmed no BYPASSRLS/memberships; only synthetic table SELECT | Isolated branch only |
-| Standalone Neon probe Worker deployment | Deployed; secret saved by operator | Probe flag disabled; no live SQL read yet |
-| Smart Capture PR #11 CI | Earlier runs passed | Re-run on final integration commit required |
+| Standalone Neon probe Worker deployment | **PASS 28 Oct 2026, 08:30:47 SAST:** 1 ingested, 1 acknowledged, 0 retries, 0 backlog, `Synthetic Neon probe passed`; dashboard flag subsequently confirmed `false` | Isolated read-only connectivity, not the Smart Capture ingestion Worker; see `SMART_CAPTURE_NEON_PROBE_ACCEPTANCE.md` |
+| Smart Capture PR #11 CI | Both build/browser and private scanner **passed at `f706db34`** | Re-run on subsequent integration commits required |
 | Real beneficiary document pipeline | Not run | Not authorised |
 
 ## 7. Decisions needed only at gates
 
 - **Now:** none; continue architecture reconciliation and synthetic tests without computer access.
-- **At SC-I03:** desktop operator activates exactly one isolated queue probe, captures masked evidence, disables flag.
+- **SC-I03 completed:** operator activated one isolated queue probe, captured masked evidence, and confirmed the flag disabled. Do not repeat without a separate test requirement.
 - **Before P5:** business owner validates required fields, missing-data rules and approval workflow; privacy/security review required.
 - **Before P6:** explicit written approval to merge/deploy and process authorised real data.
 
@@ -84,4 +84,4 @@ The Codex-built VectraSA application is the system of record for beneficiary cas
 - `docs/SMART_CAPTURE_NEON_PROBE_ACCEPTANCE.md` — one-message acceptance and rollback
 - Draft PR #11 — source changes, CI and review history
 
-**Current work:** SC-I01 source architecture inventory completed in `docs/SMART_CAPTURE_CODEX_ARCHITECTURE_BASELINE.md`, pending independent review and deployed runtime parity. SC-I04 page-number fail-closed fix and tests committed; latest CI pending. Continue SC-I02 canonical audit/privilege design and SC-I04 synthetic document tests without desktop access. Do not present any phase as approved or deployed until supported by evidence.
+**Current work (28 Oct 2026):** SC-I03 live isolated queue-to-Neon probe passed and was disabled; SC-I04 synthetic Google Drive fixture presence reconfirmed through the connected Drive account. The separate Smart Capture service account's access to this folder, test-only Google Document AI configuration, isolated scanner/R2 bindings, authenticated officer UI and Neon draft/audit transaction remain **unverified together**. Next gate: execute the synthetic-only plan in `docs/SMART_CAPTURE_SYNTHETIC_E2E_EXECUTION.md`; do not enable the production Worker or process real PDFs.
