@@ -64,6 +64,12 @@ The API permits PDF, JPEG and PNG files up to 5 MB. An authenticated upload inte
 
 The DoHS workspace covers Pages 2 and 3 and Sections C, E, F and H. Only a project-assigned DoHS reviewer may write these reviews. Updates carry the last review timestamp and checked form version to reject stale decisions. Applicant-form saves cannot modify departmental fields.
 
+## Housing project creation
+
+Authorised accounts can choose **Home → New housing project** to enter a name, unique project code, optional client/authority and location. Each new project uses the existing housing form and readiness checks, starts with its own empty dashboard, and gives its creator ADMIN membership for that new project. Existing project access is unchanged. Other team memberships are still assigned through controlled operator setup.
+
+An organisation-scoped project-creator capability is required independently of capture or existing project roles. Signup grants no creator capability. Apply `migrations/20261028_housing_project_creation.sql` before deploying this feature. The database function checks the capability and commits the project, creator membership and audit entry together. Repeating the same request returns the existing project; duplicate codes or changed requests are rejected. The isolated **Housing project permissions** CI job exercises real PostgreSQL RLS, concurrent creation, failure rollback and privilege boundaries in parallel with the other checks.
+
 ## ID reading and private service deployment
 
 `npm run deploy` deploys the app and static assets on `emalahleni-api-staging` using `--containers-rollout=none`, preserving the currently deployed scanner image without requiring Docker in Workers Builds. For an intentional scanner image update, run `npm run deploy:scanner` from a Docker-capable environment after the scanner checks pass. Both commands use the canonical `wrangler.jsonc` and preserve the existing `DocumentScanner` class, `SCANNER_CONTAINER` namespace and `emalahleni-scanner-staging-documentscanner` application name. Workers Builds scopes deployments to its connected Worker; deploying another named Worker from that build caused the 15 October failure and is no longer supported. Runtime secrets are preserved, not generated or rotated by deployment. Upload and ID-reading flags are enabled for controlled synthetic testing following the passed private service check. See [scanner/DEPLOYMENT.md](scanner/DEPLOYMENT.md).

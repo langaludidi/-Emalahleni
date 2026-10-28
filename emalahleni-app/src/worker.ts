@@ -13,6 +13,7 @@ import {probeDocumentService,DocumentServiceCheckError} from './document-service
 import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
+import {listProjects,createHousingProject} from './projects';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -87,9 +88,10 @@ return async function handle(request: Request, env: Env): Promise<Response> {
       if(id&&action==='download'&&request.method==='GET')return await download(db,actor,project,application,id,env);
       throw new HttpError(405,'METHOD_NOT_ALLOWED');
     }
-    if (path === '/api/projects' && request.method === 'GET') {
-      const [rows] = await db.forActor(actor, [{ query: 'SELECT p.id,p.code,p.name,m.role FROM public.projects p JOIN public.project_memberships m ON m.project_id=p.id WHERE m.user_id=$1 AND m.active ORDER BY p.name', params: [actor] }]);
-      return json({ projects: rows });
+    if (path === '/api/projects') {
+      if(request.method==='GET')return json(await listProjects(db,actor));
+      if(request.method==='POST'){const result=await createHousingProject(db,actor,await body(request));return json(result,result.created?201:200);}
+      throw new HttpError(405,'METHOD_NOT_ALLOWED');
     }
     const dashboardRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/dashboard$/i);
     if(dashboardRoute){

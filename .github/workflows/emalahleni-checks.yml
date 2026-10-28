@@ -64,6 +64,39 @@ jobs:
       # These share a disposable fixture schema, so their setup remains ordered.
       - run: node --import tsx tests/upload-concurrency.ts
       - run: node --import tsx tests/review-concurrency.ts
+  project_database:
+    name: Housing project permissions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: vectra_ci
+          POSTGRES_PASSWORD: synthetic-ci-postgres-password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d vectra_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    env:
+      CI: 'true'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGDATABASE: vectra_ci
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-postgres-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: node --import tsx tests/project-creation.ts
   browser:
     name: Build and browser
     runs-on: ubuntu-latest
@@ -96,12 +129,13 @@ jobs:
   verify:
     # Preserve the existing aggregate check name while the work runs in parallel.
     if: always()
-    needs: [checks, database, browser]
+    needs: [checks, database, project_database, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to pass
         env:
           CHECKS_RESULT: ${{ needs.checks.result }}
           DATABASE_RESULT: ${{ needs.database.result }}
+          PROJECT_DATABASE_RESULT: ${{ needs.project_database.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
-        run: test "$CHECKS_RESULT" = success && test "$DATABASE_RESULT" = success && test "$BROWSER_RESULT" = success
+        run: test "$CHECKS_RESULT" = success && test "$DATABASE_RESULT" = success && test "$PROJECT_DATABASE_RESULT" = success && test "$BROWSER_RESULT" = success

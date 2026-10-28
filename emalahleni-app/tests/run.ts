@@ -6,4 +6,5 @@ import './document-service-probe.test.ts';
 import './features.test.ts';
 import './reliability.test.ts';
 import './dashboard.test.ts';
+import './projects.test.ts';
 
