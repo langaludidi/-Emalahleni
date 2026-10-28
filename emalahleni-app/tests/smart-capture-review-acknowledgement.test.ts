@@ -36,3 +36,12 @@ test('SC-I05 API refuses draft confirmation without valid quarantined source PDF
  assert.match(confirm,/validSmartCaptureQuarantineKey\(row\.storage_key,project,id\)/);
  assert.match(confirm,/SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE/);
 });
+
+test('SC-I05 API requires verified applicant name and identity before creating a draft',()=>{
+ const code=readFileSync(new URL('../src/smart-capture-review.ts',import.meta.url),'utf8');
+ const confirm=code.split('export async function confirmSmartCaptureProposal')[1]?.split('export async function downloadSmartCapturePdf')[0]??'';
+ assert.match(confirm,/check\.form\.applicant\.firstNames\.trim\(\)/);
+ assert.match(confirm,/check\.form\.applicant\.surname\.trim\(\)/);
+ assert.match(confirm,/check\.form\.applicant\.idNumber/);
+ assert.match(confirm,/SMART_CAPTURE_APPLICANT_IDENTITY_INCOMPLETE/);
+});
