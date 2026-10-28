@@ -12,9 +12,12 @@ export async function verifySmartCaptureSourcePdf(input:{
   throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
  if(!bucket)throw new HttpError(503,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
  const stored=await bucket.get(storageKey);
- if(!stored||stored.size>5*1024*1024)
+ if(!stored||stored.size<5||stored.size>5*1024*1024)
   throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
  const bytes=await stored.arrayBuffer();
+ if(bytes.byteLength!==stored.size||bytes.byteLength<5||
+  bytes[0]!==37||bytes[1]!==80||bytes[2]!==68||bytes[3]!==70||bytes[4]!==45)
+  throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)))
   .map(byte=>byte.toString(16).padStart(2,'0')).join('');
  if(hash!==contentSha256)throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
