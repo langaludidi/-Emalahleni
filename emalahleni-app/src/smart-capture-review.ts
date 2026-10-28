@@ -10,6 +10,7 @@ import {extractionProposalSchema,proposeCaseForm} from './smart-capture-proposal
 import {sealSmartCaptureProposal,openSmartCaptureProposal} from './smart-capture-crypto';
 import {encryptForm} from './crypto';
 import {validSmartCaptureQuarantineKey} from './smart-capture-storage';
+import {verifySmartCaptureSourcePdf} from './smart-capture-source-integrity';
 
 type ReviewEnv={SMART_CAPTURE_ENABLED?:string;SMART_CAPTURE_PROCESSING_ENABLED?:string;
  SMART_CAPTURE_ENCRYPTION_KEY?:string;FORM_ENCRYPTION_KEY?:string;EVIDENCE_BUCKET?:R2Bucket;};
@@ -78,15 +79,8 @@ export async function confirmSmartCaptureProposal(db:Database,actor:string,proje
  if(!check.form.applicant.firstNames.trim()||!check.form.applicant.surname.trim()||
   !check.form.applicant.idNumber)
   throw new HttpError(422,'SMART_CAPTURE_APPLICANT_IDENTITY_INCOMPLETE');
- // A metadata row alone does not prove the source PDF is still present or intact.
- // Verify the exact quarantined bytes before permitting a new draft commit.
- if(!env.EVIDENCE_BUCKET)throw new HttpError(503,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
- const sourcePdf=await env.EVIDENCE_BUCKET.get(row.storage_key);
- if(!sourcePdf||sourcePdf.size>5*1024*1024)throw new HttpError(409,'SMART_CAPTURE_SOURCE_PDF_UNAVAILABLE');
- const sourceBytes=await sourcePdf.arrayBuffer();
- const sourceHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',sourceBytes)))
-  .map(byte=>byte.toString(16).padStart(2,'0')).join('');
- if(sourceHash!==row.content_sha256)throw new HttpError(409,'SMART_CAPTURE_STORAGE_MISMATCH');
+ await verifySmartCaptureSourcePdf({bucket:env.EVIDENCE_BUCKET,project,importId:id,
+  storageKey:row.storage_key,contentSha256:row.content_sha256});
  // Supporting-document PDFs from one beneficiary folder must not create
  // independent beneficiary records. Database unique index is the final guard.
  const [sameFolder]=await db.forActor(actor,[{query:`
