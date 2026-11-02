@@ -7,7 +7,7 @@ This is a **configuration scaffold**, not a deployed Worker.
 - Scanner: `vectra-assure-r1-scanner`, separate container and Durable Object; no reuse of the existing staging scanner.
 - Neon: use **only** branch `test/vectra-r1-acceptance-20261102` (`br-curly-snow-zal4ef7o`) in project `summer-cell-31554288`.
 - Default flags disable document uploads and ID OCR until authenticated services, scanner and private synthetic-only bucket have been verified.
-- The acceptance branch was cloned from staging and contains inherited application/evidence records. Do not expose or exercise these records; only use designated synthetic accounts/projects. Review and scrub the acceptance branch if any real data is present.
+- The acceptance branch was cloned from staging. Its inherited users and operational records were subsequently cleared with explicit approval; only three new synthetic Auth identities and two synthetic housing projects remain. The case API still stays disabled until full end-to-end acceptance.
 
 ## Before deployment
 
@@ -34,7 +34,7 @@ Disable acceptance Worker routing, delete only acceptance Worker/container and p
 
 - Dedicated Neon acceptance branch: `br-curly-snow-zal4ef7o`.
 - Its Auth endpoint is `https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth` and differs from staging's endpoint.
-- The branch inherited **9 Neon Auth users**, 2 applications and 3 evidence records. A count-only query could not classify any of those Auth accounts as provably synthetic by test-email convention. **Do not expose this branch to a publicly enabled case API** until inherited data is reviewed and a destructive test-only cleanup is separately approved. No user deletions have been performed.
+- At initial inspection the branch had inherited **9 Neon Auth users, 2 applications and 3 evidence records**, none of the Auth users provably synthetic. **Historical observation only:** see the authorised sanitisation section below for the subsequent deletion and synthetic reseeding.
 - The dedicated Worker config keeps `ENABLE_CASE_API`, `ENABLE_DOCUMENT_UPLOADS`, and `ENABLE_ID_READING` disabled by default.
 - The Next.js frontend originally embedded staging Neon Auth. This branch now supports `NEXT_PUBLIC_NEON_AUTH_BASE_URL` at compile time. A dedicated preflight rejects missing/incorrect acceptance Auth URLs, reused R2/scanner names, custom domains, or plaintext secrets, and examines the compiled JavaScript for staging Auth references.
 - No Worker or scanner is deployed by this CI job. The dedicated GitHub workflow `vectra-r1-acceptance.yml` performs build, asset verification and Wrangler **dry-run only**.
@@ -72,3 +72,39 @@ With explicit approval, the **test branch only** (`br-curly-snow-zal4ef7o`) was 
 - Rechecked **parent staging** remained at 9 Auth users, 4 projects, 2 applications and 3 evidence rows. The production branch was not modified.
 
 **Still blocked:** Synthetic Auth users were provisioned as directory identities only; no test password or verified login was established. The acceptance Worker has not been deployed and requires separately scoped Cloudflare access, branch-specific `DATABASE_URL` / encryption secret, an isolated scanner deployment, and acceptance Auth trusted-origin configuration. Do not enable the case API or document flags until these are complete.
+
+## Neon Auth origin and credential readiness — current (2 November 2026)
+
+The dedicated Neon Auth service has an independent endpoint:
+`https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth`.
+
+- **Acceptance trusted origin:** `https://vectra-assure-r1-acceptance.ludidil.workers.dev` only.
+- The copied staging origins (`app.vectrasa.co.za` and `emalahleni-api-staging.ludidil.workers.dev`) were removed from the **acceptance branch only**.
+- Verified staging Auth trusted origins are unchanged.
+- The three seeded `@example.invalid` users have credential accounts but **no password hashes and no verified email**; they cannot yet be used for a real login, and `example.invalid` cannot receive OTP verification messages. Do **not** manufacture a password hash or bypass verification by SQL.
+- To complete authenticated acceptance, create *new, deliverable* synthetic test logins in the isolated Neon Auth branch through the normal sign-up/verification flow (or provision secure credentials using Neon-supported APIs), then link their exact authenticated user IDs to synthetic housing project memberships. Do not reuse a personal or staging identity or paste login secrets into GitHub.
+
+## First Worker and scanner deployment — secure operator handoff
+
+Cloudflare management is not connected to this ChatGPT session; **no Worker or container was deployed here**.
+
+Cloudflare's documentation confirms that the initial `wrangler deploy` can publish the Worker before the container image is built, so a failed image build can leave a reachable Worker. The acceptance configuration deliberately has `ENABLE_CASE_API=false`, `ENABLE_DOCUMENT_UPLOADS=false` and `ENABLE_ID_READING=false` as a fail-closed first stage.
+
+Prerequisites for an **authorised, inert first deployment**:
+
+1. Create a Cloudflare API token with the minimum required Worker creation and Container deployment permissions, scoped to account `f887a522ca852a80491c2485853d4363`. Keep it in the deploy host or Cloudflare Builds secret settings, **not in the repository or ChatGPT**. Once the dedicated Worker exists, restrict future tokens to that Worker.
+2. Use GitHub PR #14's `feat/evidence-provenance-consistency-r1` branch, with working Node dependencies and Docker-compatible container image build support. Deploying from a different branch must be independently reviewed.
+3. In the local/isolated build environment set these **non-secret** variables:
+   - `CLOUDFLARE_ACCOUNT_ID=f887a522ca852a80491c2485853d4363`
+   - `NEXT_PUBLIC_NEON_AUTH_BASE_URL=https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth`
+   - `R1_ISOLATED_DEPLOY_APPROVED=vectra-assure-r1-acceptance`
+4. Supply `CLOUDFLARE_API_TOKEN` as a secret to the deploy process. **Leave `DATABASE_URL`, `FORM_ENCRYPTION_KEY` and `SCANNER_TOKEN` unset on this first inert deployment**.
+5. From `emalahleni-app` run:
+   ```bash
+   node scripts/deploy-r1-acceptance.mjs --deploy-isolated
+   ```
+6. Confirm only `vectra-assure-r1-acceptance` and `vectra-assure-r1-scanner` were created; check `/healthz` reports the case API, uploads and ID reading disabled; check `/storage-healthz` recognises the test bucket. Do not attach a custom domain.
+7. If a deployment step fails, inspect the Cloudflare dashboard for a partial acceptance Worker before retrying. **Never invoke the existing `npm run deploy` or `deploy:scanner` scripts:** those address the staging Worker.
+8. Later, configure `DATABASE_URL` using the **acceptance** branch's `emalahleni_worker` credentials, a new `FORM_ENCRYPTION_KEY` for new synthetic forms, and a separate `SCANNER_TOKEN` through encrypted Worker secrets. Keep the flags disabled until a real authenticated acceptance session and scanner/R2 tests pass.
+
+Cloudflare Workers Builds can alternatively connect a **new** Worker to the same GitHub repo, with this acceptance branch as its production branch, but that enables automatic deployments on future pushes. Prefer the explicit guarded deploy script while R1 remains a draft. Do not connect the existing staging Worker to the acceptance configuration.
