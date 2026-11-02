@@ -62,8 +62,10 @@
   ],
   "vars": {
     "ENABLE_API_RATE_LIMITS": "true",
-    "ENABLE_CASE_API": "true",
+    "ENABLE_CASE_API": "false",
     "ENABLE_DOCUMENT_UPLOADS": "false",
-    "ENABLE_ID_READING": "false"
+    "ENABLE_ID_READING": "false",
+    "NEON_AUTH_BASE_URL": "https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth",
+    "NEON_AUTH_JWKS_URL": "https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth/.well-known/jwks.json"
   }
 }
