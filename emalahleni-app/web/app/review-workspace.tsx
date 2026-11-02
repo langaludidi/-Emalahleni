@@ -18,6 +18,7 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
  const [evidenceState,setEvidenceState]=useState<'loading'|'ready'|'error'>('loading'),[departmentState,setDepartmentState]=useState<'loading'|'ready'|'error'>('loading');
  const [uploadsEnabled,setUploadsEnabled]=useState<boolean|null>(null),[uploadMessage,setUploadMessage]=useState(''),[uploadError,setUploadError]=useState(false);
  const [idReadingEnabled,setIdReadingEnabled]=useState<boolean|null>(null),[idDocument,setIdDocument]=useState(''),[idProposal,setIdProposal]=useState<IdReading|null>(null),[idMessage,setIdMessage]=useState(''),[idError,setIdError]=useState(false);
+ const [consistencyMessage,setConsistencyMessage]=useState(''),[consistencyError,setConsistencyError]=useState(false);
  const [serviceMessage,setServiceMessage]=useState(''),[serviceError,setServiceError]=useState(false);
  const [scanMessages,setScanMessages]=useState<Record<string,{message:string;error:boolean}>>({});
  const fileInput=useRef<HTMLInputElement>(null);
@@ -104,6 +105,18 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
    if(code==='ID_READING_FILE_REJECTED'){changed();await refresh();}
   }finally{setBusy(false);}
  }
+ async function recordConsistency(){
+  setBusy(true);setConsistencyError(false);setConsistencyMessage('Checking the saved case against the scanned ID.');
+  try{
+   if(captureUnsaved)throw new Error('Save the form before recording consistency findings.');
+   if(!selectedId||idReadingEnabled!==true)throw new Error('Select an available clean applicant ID.');
+   const result=await api(root+`/consistency/${selectedId}`,'POST');
+   if(result.formVersion!==formVersion)throw new Error('The saved form version changed. Reopen the case before checking again.');
+   const counts=(result.findings as {state:string}[]).reduce((acc:Record<string,number>,f)=>({...acc,[f.state]:(acc[f.state]??0)+1}),{});
+   setConsistencyMessage(`Recorded ${result.findings.length} source-linked findings for saved form version ${formVersion}: ${counts.MATCH??0} matches, ${counts.MISMATCH??0} discrepancies, ${counts.UNKNOWN??0} unknown, ${counts.NOT_CHECKED??0} unchecked. Human review remains required.`);
+  }catch(error){setConsistencyError(true);setConsistencyMessage(error instanceof Error?error.message:'Consistency checking was unavailable. No approval was changed.');}
+  finally{setBusy(false);}
+ }
  async function retryScan(document:Document){
   setScanMessages(current=>({...current,[document.id]:{message:'Scanning the stored file. Temporary service failures will be retried automatically.',error:false}}));
   try{
@@ -153,6 +166,8 @@ export default function ReviewWorkspace({formVersion,captureUnsaved,captureEdita
    {idReadingEnabled===true&&!idDocuments.length&&<p className="hint">Upload an applicant ID and wait for a clean malware scan before reading its details.</p>}
    <label className="field"><span>Applicant ID to read</span><select value={selectedId} disabled={busy||idReadingEnabled!==true||!idDocuments.length} onChange={event=>chooseId(event.target.value)}><option value="">Choose applicant ID</option>{idDocuments.map(document=><option key={document.id} value={document.id}>{document.filename}</option>)}</select></label>
    <button disabled={busy||idReadingEnabled!==true||!selectedId} onClick={()=>void readIdentity()}>Read ID details</button>
+   <button className="secondary" disabled={busy||captureUnsaved||idReadingEnabled!==true||!selectedId} onClick={()=>void recordConsistency()}>Record saved-form consistency</button>
+   <p className="hint upload-feedback" role={consistencyError?'alert':'status'} aria-live="polite">{consistencyMessage}</p>
    <p className="hint upload-feedback" role={idError?'alert':'status'} aria-live="polite">{idMessage}</p>
    {idProposal&&<fieldset disabled={busy||evidenceState!=='ready'||idReadingEnabled!==true}><IdProposal key={`${idProposal.evidenceId}/${idProposal.sha256}`} proposal={idProposal} current={applicant} cancel={()=>{setIdProposal(null);setIdMessage('ID suggestions discarded. Form details are unchanged.');}} apply={fields=>{applyId(fields);setIdProposal(null);setIdMessage('Selected ID details applied. Save the draft to keep them. Assessor review is still required.');}}/></fieldset>}
   </section>}
