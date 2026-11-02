@@ -29,6 +29,12 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Require isolated Worker, private R2, scanner and Neon Auth
         run: node scripts/check-r1-acceptance.mjs
+      - name: Require explicit deployment approval for acceptance Worker
+        run: |
+          if node scripts/deploy-r1-acceptance.mjs; then
+            echo 'Deployment script unexpectedly succeeded without approval' >&2
+            exit 1
+          fi
       - name: Compile with test-branch Neon Auth
         run: npx next build web
       - name: Verify compiled authentication URL
