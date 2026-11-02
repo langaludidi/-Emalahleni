@@ -15,7 +15,7 @@ export default function IdProposal({proposal,current,apply,cancel}:{proposal:IdR
   <h3>Review ID details</h3><p>Check these suggestions against the original applicant ID. Existing form values stay in place unless you select a replacement.</p>
   <div className="notice" aria-label="ID source and consistency checks">
    <h4>Source and consistency checks</h4>
-   <p className="hint">Source evidence: {proposal.evidenceId} · SHA-256: {proposal.sha256}</p>
+   <p className="hint" style={{overflowWrap:'anywhere'}}>Source evidence: {proposal.evidenceId} · SHA-256: {proposal.sha256}</p>
    <p className="hint">Method: labelled ID OCR extraction · Read at: {proposal.provenance?.observedAt??'Not recorded'}</p>
    <ul>{findings.map(finding=><li key={finding.field}>{fieldLabels[finding.field]}: <strong>{finding.state.replace('_',' ').toLowerCase()}</strong>{finding.state==='MISMATCH'?' — compare with original before changing the form.':''}</li>)}</ul>
    <p className="hint">An empty field is not a match. Results are advisory and do not confirm authenticity or grant approval.</p>
