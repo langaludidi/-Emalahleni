@@ -1,0 +1,69 @@
+{
+  "name": "vectra-assure-r1-acceptance",
+  "account_id": "f887a522ca852a80491c2485853d4363",
+  "main": "src/entrypoint.ts",
+  "compatibility_date": "2026-10-10",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "redact_query_string": true,
+    "logs": {
+      "enabled": true,
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": false
+    }
+  },
+  "assets": {
+    "directory": "./web/out",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/api/*",
+      "/healthz",
+      "/storage-healthz",
+      "/storage-probe"
+    ]
+  },
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE_BUCKET",
+      "bucket_name": "vectra-assure-r1-evidence-test"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCANNER_CONTAINER",
+        "class_name": "DocumentScanner"
+      }
+    ]
+  },
+  "exports": {
+    "DocumentScanner": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "vectra-assure-r1-scanner"
+    }
+  },
+  "containers": [
+    {
+      "name": "vectra-assure-r1-scanner",
+      "class_name": "DocumentScanner",
+      "image": "./scanner/Dockerfile",
+      "image_build_context": "./scanner",
+      "max_instances": 1,
+      "instance_type": "standard-1",
+      "observability": {
+        "enabled": true
+      }
+    }
+  ],
+  "vars": {
+    "ENABLE_API_RATE_LIMITS": "true",
+    "ENABLE_CASE_API": "true",
+    "ENABLE_DOCUMENT_UPLOADS": "false",
+    "ENABLE_ID_READING": "false"
+  }
+}
