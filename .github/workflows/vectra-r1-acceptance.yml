@@ -1,0 +1,43 @@
+name: Vectra R1 acceptance configuration (no deploy)
+on:
+  push:
+    paths:
+      - 'emalahleni-app/**'
+      - '.github/workflows/vectra-r1-acceptance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  WRANGLER_SEND_METRICS: 'false'
+  NEXT_PUBLIC_NEON_AUTH_BASE_URL: https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth
+jobs:
+  isolated-config-dry-run:
+    name: R1 isolated build and Wrangler dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: emalahleni-app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: emalahleni-app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Require isolated Worker, private R2, scanner and Neon Auth
+        run: node scripts/check-r1-acceptance.mjs
+      - name: Require explicit deployment approval for acceptance Worker
+        run: |
+          if node scripts/deploy-r1-acceptance.mjs; then
+            echo 'Deployment script unexpectedly succeeded without approval' >&2
+            exit 1
+          fi
+      - name: Compile with test-branch Neon Auth
+        run: npx next build web
+      - name: Verify compiled authentication URL
+        run: node scripts/check-r1-acceptance.mjs --verify-assets
+      - name: Validate deployment package without deployment
+        run: npx wrangler deploy --config wrangler.r1-acceptance.jsonc --containers-rollout=none --dry-run --outdir dist/r1-acceptance

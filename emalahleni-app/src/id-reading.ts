@@ -8,6 +8,7 @@ export type IdFields=z.infer<typeof idFieldsSchema>;
 export interface IdReading {
  evidenceId:string;sha256:string;fields:IdFields;dateOfBirth:string|null;
  warnings:string[];requiresConfirmation:true;
+ provenance?:{sourceEvidenceId:string;sourceSha256:string;method:'SCANNER_OCR_LABELLED_ID_V1';observedAt:string};
 }
 
 function calendarDate(year:number,month:number,day:number){

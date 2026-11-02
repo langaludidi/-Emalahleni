@@ -430,6 +430,8 @@ try:
             upload_state = {'enabled':False,'id_reading':False,'service_ready':False,'service_error':None,'fail_reading':False,'fail_register':False,'fail_department':False,'fail_intent':False,'fail_refresh_after_upload':False,'retry_failure':None}
             evidence_documents, upload_intents, uploaded_bytes = [], [], []
             id_reads = []
+            consistency_writes = []
+            consistency_version_offset = {'value':0}
             def valid_synthetic_id():
                 for check in range(10):
                     candidate = '900101000008' + str(check)
@@ -486,6 +488,10 @@ try:
                         status, result = 503, {'error':'ID_READING_UNAVAILABLE'}
                     else:
                         result = {'evidenceId':'synthetic-document','sha256':'a'*64,'fields':{'firstNames':'READ SYNTHETIC','surname':'READ EXAMPLE','idNumber':synthetic_id},'dateOfBirth':'1990-01-01','warnings':['Check every proposed value against the original ID.'],'requiresConfirmation':True}
+                elif suffix.endswith('/consistency/synthetic-document') and method == 'POST':
+                    consistency_writes.append(suffix)
+                    result = {'formVersion':stored_cases[suffix.split('/')[0]]['version']+consistency_version_offset['value'],
+                              'findings':[{'field':'firstNames','state':'MISMATCH'}, {'field':'surname','state':'MISMATCH'}, {'field':'idNumber','state':'MATCH'}]}
                 elif suffix.endswith('/readiness') and method == 'GET':
                     current = stored_cases[suffix.split('/')[0]]
                     result = {'formVersion':current['version']+readiness_version['offset'],'ruleVersion':'synthetic','provisional':True,'readiness':'AMBER','ourTeamReady':False,'departmentalReady':False,'submissionReady':False,'issues':[],'requirements':[]}
@@ -801,6 +807,16 @@ try:
             assert stored_cases['synthetic-case-1']['form']['applicant']['firstNames'] == 'Corrected Synthetic'
             assert stored_cases['synthetic-case-1']['form']['applicant']['surname'] == 'Changed'
             assert stored_cases['synthetic-case-1']['form']['applicant']['idNumber'] == synthetic_id
+            record_consistency = reader.get_by_role('button', name='Record saved-form consistency', exact=True)
+            expect(record_consistency).to_be_enabled()
+            record_consistency.click()
+            reader.get_by_text('Recorded 3 source-linked findings for saved form version 3: 1 matches, 2 discrepancies, 0 unknown, 0 unchecked. Human review remains required.', exact=True).wait_for()
+            assert len(consistency_writes) == 1
+            consistency_version_offset['value'] = 1
+            record_consistency.click()
+            reader.get_by_text('The saved form version changed. Reopen the case before checking again.', exact=True).wait_for()
+            assert len(consistency_writes) == 2
+            consistency_version_offset['value'] = 0
             assert page.locator('.evidence-register').get_by_text('applicant id · pending review · clean', exact=True).is_visible()
             project_role['value'] = 'ASSESSOR'
             page.locator('summary', has_text='Account').click()

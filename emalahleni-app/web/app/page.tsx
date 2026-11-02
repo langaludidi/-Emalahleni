@@ -20,7 +20,7 @@ import type {HousingProject,ProjectOrganisation} from '../../src/projects';
 import type {ProjectDashboard} from '../../src/dashboard';
 import {evidenceWriterRoles} from '../../src/evidence-contracts';
 
-const authUrl = 'https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth';
+const authUrl = process.env.NEXT_PUBLIC_NEON_AUTH_BASE_URL || 'https://ep-cold-scene-zaa3qek2.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth';
 type Project = { id: string; name: string; code: string; role: string };
 type Case = { id: string; reference: string; version: number; workflow_status: string };
 const steps = ['Applicant', 'Household & income', 'Site verification', 'Documents & readiness'];

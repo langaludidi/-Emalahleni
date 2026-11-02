@@ -1,6 +1,7 @@
 'use client';
 import {useState} from 'react';
 import {birthDateFromId,idFieldsSchema,validSaId,type IdFields,type IdReading} from '../../src/id-reading';
+import {compareIdReading} from '../../src/evidence-consistency';
 const fieldLabels:Record<keyof IdFields,string>={firstNames:'First names',surname:'Surname',idNumber:'South African ID number'};
 export default function IdProposal({proposal,current,apply,cancel}:{proposal:IdReading;current:IdFields;apply:(fields:Partial<IdFields>)=>void;cancel:()=>void}){
  const [values,setValues]=useState<IdFields>(proposal.fields);
@@ -9,8 +10,16 @@ export default function IdProposal({proposal,current,apply,cancel}:{proposal:IdR
  const chosen=Object.fromEntries((Object.keys(fieldLabels) as (keyof IdFields)[]).filter(key=>selected[key]).map(key=>[key,values[key].trim()])) as Partial<IdFields>;
  const valid=Object.keys(chosen).length>0&&Object.values(chosen).every(Boolean)&&idFieldsSchema.partial().safeParse(chosen).success&&(!chosen.idNumber||validSaId(chosen.idNumber));
  const date=values.idNumber===proposal.fields.idNumber?proposal.dateOfBirth:birthDateFromId(values.idNumber);
+ const findings=compareIdReading(proposal,current);
  return <section className="notice id-proposal" aria-label="Review extracted ID details">
   <h3>Review ID details</h3><p>Check these suggestions against the original applicant ID. Existing form values stay in place unless you select a replacement.</p>
+  <div className="notice" aria-label="ID source and consistency checks">
+   <h4>Source and consistency checks</h4>
+   <p className="hint" style={{overflowWrap:'anywhere'}}>Source evidence: {proposal.evidenceId} · SHA-256: {proposal.sha256}</p>
+   <p className="hint">Method: labelled ID OCR extraction · Read at: {proposal.provenance?.observedAt??'Not recorded'}</p>
+   <ul>{findings.map(finding=><li key={finding.field}>{fieldLabels[finding.field]}: <strong>{finding.state.replace('_',' ').toLowerCase()}</strong>{finding.state==='MISMATCH'?' — compare with original before changing the form.':''}</li>)}</ul>
+   <p className="hint">An empty field is not a match. Results are advisory and do not confirm authenticity or grant approval.</p>
+  </div>
   {proposal.warnings.length>0&&<ul className="hint">{proposal.warnings.map(warning=><li key={warning}>{warning}</li>)}</ul>}
   {(Object.keys(fieldLabels) as (keyof IdFields)[]).map(key=><div className="id-field" key={key}>
    <label className="field"><span>{fieldLabels[key]} read from ID</span><input value={values[key]} maxLength={key==='idNumber'?13:250} inputMode={key==='idNumber'?'numeric':undefined} onChange={event=>{setValues(v=>({...v,[key]:key==='idNumber'?event.target.value.replace(/\D/g,''):event.target.value}));setConfirmed(false);}}/></label>

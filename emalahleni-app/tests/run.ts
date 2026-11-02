@@ -1,6 +1,8 @@
 import './contracts.test.ts';
 import './evidence.test.ts';
 import './id-reading.test.ts';
+import './evidence-consistency.test.ts';
+import './consistency-service.test.ts';
 import './id-document.test.ts';
 import './document-service-probe.test.ts';
 import './features.test.ts';
