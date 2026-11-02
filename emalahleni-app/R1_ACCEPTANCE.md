@@ -58,3 +58,17 @@ npx wrangler deploy --config wrangler.r1-acceptance.jsonc --containers-rollout=n
 4. Whitelist only the actual acceptance Worker origin in the acceptance branch's Neon Auth trusted origins once the Worker exists. Do not reuse the staging frontend hostname.
 5. Verify private R2 binding, scanner health, synthetic identity sign-in, project RLS and version/hash rejection before enabling case API and document flags for the acceptance Worker.
 6. Keep `app.vectrasa.co.za`, `emalahleni-api-staging`, and `emalahleni-evidence-staging` untouched.
+
+## Disposable Neon acceptance branch — authorised sanitisation (2 November 2026)
+
+With explicit approval, the **test branch only** (`br-curly-snow-zal4ef7o`) was sanitised:
+
+- Deleted nine inherited Neon Auth users with Neon Auth user-management operations; associated Auth accounts, sessions, verifications, invitations and memberships confirmed empty.
+- Truncated the test branch's user-owned public operational tables, including applications, evidence, upload intents, auditing, project membership, organisations, project records and users. Migration metadata and reference catalogue were retained.
+- Verified zero inherited projects, public users, Auth users, applications, evidence, audit events and consistency findings immediately after cleanup; retained 17 `schema_migrations` entries and 1 `rule_catalogue_registry` entry.
+- Created **three synthetic Neon Auth accounts** (`r1.officer.20261102@example.invalid`, `r1.reviewer.20261102@example.invalid`, `r1.outsider.20261102@example.invalid`) and corresponding application users.
+- Seeded `SYN-R1-A` and `SYN-R1-B` housing projects with test-only membership: Officer and DoHS Reviewer on A; outsider Officer on B. No case or evidence records were fabricated: these must be created by the application with its encrypted form and private R2 workflow.
+- Verified real `emalahleni_worker` RLS sessions: officer and reviewer see only `SYN-R1-A`; outsider sees only `SYN-R1-B`; unassigned actor sees no projects.
+- Rechecked **parent staging** remained at 9 Auth users, 4 projects, 2 applications and 3 evidence rows. The production branch was not modified.
+
+**Still blocked:** Synthetic Auth users were provisioned as directory identities only; no test password or verified login was established. The acceptance Worker has not been deployed and requires separately scoped Cloudflare access, branch-specific `DATABASE_URL` / encryption secret, an isolated scanner deployment, and acceptance Auth trusted-origin configuration. Do not enable the case API or document flags until these are complete.
