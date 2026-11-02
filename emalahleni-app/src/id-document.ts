@@ -41,5 +41,6 @@ export async function readIdDocument(db:Database,actor:string,project:string,app
  // Keep extracted identity values in the response only; audit metadata contains no OCR text or ID details.
  const [audited]=await db.forActor(actor,[{query:`WITH current_document AS (SELECT id FROM public.evidence WHERE project_id=$1 AND application_id=$2 AND id=$3 AND sha256=$5 AND malware_status='CLEAN' AND status IN ('PENDING_REVIEW','VERIFIED') AND ${writerScope}), audited AS (INSERT INTO public.audit_events (project_id,actor_id,action,metadata) SELECT $1,$4,'ID_DETAILS_READ',jsonb_build_object('applicationId',$2::text,'evidenceId',id) FROM current_document) SELECT id FROM current_document`,params:[project,application,id,actor,sha256]}]);
  if(!audited.length)throw new HttpError(409,'ID_READING_STATE_CHANGED');
- return {evidenceId:id,sha256,...parsed,requiresConfirmation:true};
+ return {evidenceId:id,sha256,...parsed,requiresConfirmation:true,
+  provenance:{sourceEvidenceId:id,sourceSha256:sha256,method:'SCANNER_OCR_LABELLED_ID_V1',observedAt:new Date().toISOString()}};
 }
