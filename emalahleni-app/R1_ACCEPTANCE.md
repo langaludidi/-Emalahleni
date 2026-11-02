@@ -29,3 +29,32 @@ This is a **configuration scaffold**, not a deployed Worker.
 ## Rollback
 
 Disable acceptance Worker routing, delete only acceptance Worker/container and private test bucket when approved, and delete only the Neon **test** branch. Never alter the staging branch, production branch, existing staging bucket or custom domain.
+
+## Acceptance security gate (2 November 2026)
+
+- Dedicated Neon acceptance branch: `br-curly-snow-zal4ef7o`.
+- Its Auth endpoint is `https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth` and differs from staging's endpoint.
+- The branch inherited **9 Neon Auth users**, 2 applications and 3 evidence records. A count-only query could not classify any of those Auth accounts as provably synthetic by test-email convention. **Do not expose this branch to a publicly enabled case API** until inherited data is reviewed and a destructive test-only cleanup is separately approved. No user deletions have been performed.
+- The dedicated Worker config keeps `ENABLE_CASE_API`, `ENABLE_DOCUMENT_UPLOADS`, and `ENABLE_ID_READING` disabled by default.
+- The Next.js frontend originally embedded staging Neon Auth. This branch now supports `NEXT_PUBLIC_NEON_AUTH_BASE_URL` at compile time. A dedicated preflight rejects missing/incorrect acceptance Auth URLs, reused R2/scanner names, custom domains, or plaintext secrets, and examines the compiled JavaScript for staging Auth references.
+- No Worker or scanner is deployed by this CI job. The dedicated GitHub workflow `vectra-r1-acceptance.yml` performs build, asset verification and Wrangler **dry-run only**.
+
+### Minimum safe build command (does not deploy)
+
+```bash
+cd emalahleni-app
+export NEXT_PUBLIC_NEON_AUTH_BASE_URL='https://ep-shiny-field-zakdrjle.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth'
+node scripts/check-r1-acceptance.mjs
+npx next build web
+node scripts/check-r1-acceptance.mjs --verify-assets
+npx wrangler deploy --config wrangler.r1-acceptance.jsonc --containers-rollout=none --dry-run --outdir dist/r1-acceptance
+```
+
+### Subsequent deployment prerequisites
+
+1. Confirm the cloned Auth identities and records are sanitized or replaced with exclusively synthetic test identities, with separate user approval for destructive cleanup.
+2. Obtain scoped Cloudflare access to create **only** `vectra-assure-r1-acceptance` and `vectra-assure-r1-scanner`. An initial Dockerfile-based container deployment requires a functioning Docker-compatible build engine or Cloudflare Workers Builds; `--containers-rollout=none` does **not** provision the initial scanner image.
+3. Configure `DATABASE_URL` for the **acceptance** Neon branch, `FORM_ENCRYPTION_KEY` for new synthetic forms, and `SCANNER_TOKEN` through encrypted Cloudflare secrets, never in source.
+4. Whitelist only the actual acceptance Worker origin in the acceptance branch's Neon Auth trusted origins once the Worker exists. Do not reuse the staging frontend hostname.
+5. Verify private R2 binding, scanner health, synthetic identity sign-in, project RLS and version/hash rejection before enabling case API and document flags for the acceptance Worker.
+6. Keep `app.vectrasa.co.za`, `emalahleni-api-staging`, and `emalahleni-evidence-staging` untouched.
