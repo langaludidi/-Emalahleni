@@ -14,6 +14,7 @@ import {evidenceWriterRoles} from './evidence-contracts';
 import {limitPublicApi,limitActorAction,type RateLimitEnv} from './rate-limit';
 import {projectDashboard} from './dashboard';
 import {listProjects,createHousingProject} from './projects';
+import {recordIdConsistency,listIdConsistency} from './consistency-service';
 
 export interface Env extends IdReadingEnv,RateLimitEnv {
   ASSETS?: Fetcher; EVIDENCE_BUCKET?: R2Bucket; DATABASE_URL?: string; FORM_ENCRYPTION_KEY?: string;
@@ -57,6 +58,13 @@ return async function handle(request: Request, env: Env): Promise<Response> {
     try { actor = await authenticate(request, env); } catch (e) { if (e instanceof Error && e.message === 'AUTH_UNCONFIGURED') throw new HttpError(503, 'AUTH_NOT_CONFIGURED'); throw new HttpError(401, 'UNAUTHENTICATED'); }
     await limitActorAction(request,env,actor);
     const db = new Database(env.DATABASE_URL);
+    const consistencyRoute=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/consistency(?:\/([0-9a-f-]+))?$/i);
+    if(consistencyRoute){
+      const project=z.uuid().parse(consistencyRoute[1]),application=z.uuid().parse(consistencyRoute[2]);
+      if(request.method==='GET'&&!consistencyRoute[3])return json(await listIdConsistency(db,actor,project,application));
+      if(request.method==='POST'&&consistencyRoute[3])return json(await recordIdConsistency(db,actor,project,application,z.uuid().parse(consistencyRoute[3]),env));
+      throw new HttpError(405,'METHOD_NOT_ALLOWED');
+    }
     const serviceProbe=path.match(/^\/api\/projects\/([0-9a-f-]+)\/applications\/([0-9a-f-]+)\/document-service-check$/i);
     if(serviceProbe){
       if(request.method!=='POST')throw new HttpError(405,'METHOD_NOT_ALLOWED');
